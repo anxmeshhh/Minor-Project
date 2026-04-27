@@ -1,4 +1,5 @@
 import { useMemo, useState, useEffect, useCallback } from "react";
+import { useHealthData } from "@/context/HealthDataContext";
 import { useNavigate } from "react-router-dom";
 import {
   Heart, Droplets, Thermometer, Zap, AlertTriangle, Pill, ClipboardList,
@@ -72,18 +73,10 @@ const Patient = () => {
   const [checkupRunning, setCheckupRunning] = useState(false);
   const [anomalyOpen, setAnomalyOpen] = useState(false);
 
-  // Medical profile (feeds into AI analysis)
-  const medicalHistory = ["Hypertension (diagnosed 2022)", "Type-2 Diabetes (managed)", "Previous MI (2024)"];
-  const prescriptions = reminders.map(m => `${m.label} — ${m.dose} at ${m.time}`);
-  const familyHealth = [
-    { name: "Priya Sharma (Spouse)", condition: "Healthy, regular checkups" },
-    { name: "Raj Sharma (Son)", condition: "Asthma (childhood, managed)" },
-    { name: "Late Shri Sharma (Father)", condition: "Cardiac arrest at age 68" },
-  ];
-  const doctorNotes = [
-    { date: "Apr 15, 2026", note: "BP 140/90 — advised lifestyle modification, reduce salt intake" },
-    { date: "Mar 28, 2026", note: "Lipid panel elevated — started Atorvastatin 20mg" },
-  ];
+  // Medical profile from shared HealthDataContext (same data as Family Hub)
+  const { getSelf, getAllForAi, family } = useHealthData();
+  const selfData = getSelf();
+  const aiInput = getAllForAi("self");
 
   // Sync Glove — calls backend to link with ESP32 hardware
   const syncGlove = useCallback(async () => {
@@ -114,13 +107,13 @@ const Patient = () => {
       method: "POST", headers: {"Content-Type":"application/json"},
       body: JSON.stringify({
         patient_id: 1,
-        medications: reminders.filter(m => !m.taken).map(m => m.label),
-        symptoms: symptoms.map(s => s.text),
+        medications: aiInput.medications,
+        symptoms: aiInput.symptoms,
         checkups: checkups.filter(c => c.status === "upcoming").map(c => c.title),
-        medical_history: medicalHistory,
-        prescriptions: prescriptions,
-        family_health: familyHealth.map(f => `${f.name}: ${f.condition}`),
-        doctor_notes: doctorNotes.map(d => `[${d.date}] ${d.note}`),
+        medical_history: aiInput.medicalHistory,
+        prescriptions: aiInput.prescriptions,
+        family_health: aiInput.familyHealth,
+        doctor_notes: aiInput.doctorNotes,
       })
     });
     if (r) {
@@ -137,7 +130,7 @@ const Patient = () => {
       else { setAiInsight("All vitals within normal parameters. Continue monitoring."); setAiUrgency("safe"); }
     }
     setAiLoading(false);
-  }, [risk, reminders, symptoms, checkups, medicalHistory, prescriptions, familyHealth, doctorNotes]);
+  }, [risk, aiInput, checkups]);
 
   const runGloveCheckup = () => {
     setCheckupRunning(true);
@@ -266,18 +259,18 @@ const Patient = () => {
               <p className="text-xs">Temp {latest?.temp.toFixed(1) ?? "—"}°C · G {latest?.gforce.toFixed(1) ?? "—"}</p>
             </div>
             <div className="rounded-lg border border-border/40 bg-panel-elevated p-2.5">
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Medications ({reminders.filter(m=>!m.taken).length} active)</p>
-              {reminders.filter(m=>!m.taken).slice(0,2).map(m=>(<p key={m.id} className="text-xs mt-0.5">{m.label}</p>))}
-              {reminders.filter(m=>!m.taken).length > 2 && <p className="text-[10px] text-muted-foreground">+{reminders.filter(m=>!m.taken).length-2} more</p>}
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Medications ({selfData.medications.length})</p>
+              {selfData.medications.slice(0,2).map(m=>(<p key={m.id} className="text-xs mt-0.5">{m.text.split("—")[0]}</p>))}
+              {selfData.medications.length > 2 && <p className="text-[10px] text-muted-foreground">+{selfData.medications.length-2} more</p>}
             </div>
             <div className="rounded-lg border border-border/40 bg-panel-elevated p-2.5">
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Medical History</p>
-              {medicalHistory.slice(0,2).map((h,i)=>(<p key={i} className="text-xs mt-0.5">{h.split("(")[0].trim()}</p>))}
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Medical History ({selfData.medicalHistory.length})</p>
+              {selfData.medicalHistory.slice(0,2).map(h=>(<p key={h.id} className="text-xs mt-0.5">{h.text.split("(")[0].trim()}</p>))}
             </div>
             <div className="rounded-lg border border-border/40 bg-panel-elevated p-2.5">
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Symptoms ({symptoms.length})</p>
-              {symptoms.slice(0,2).map(s=>(<p key={s.id} className="text-xs mt-0.5 truncate">{s.text}</p>))}
-              {symptoms.length === 0 && <p className="text-xs mt-0.5 text-muted-foreground">None reported</p>}
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Symptoms ({selfData.symptoms.length})</p>
+              {selfData.symptoms.slice(0,2).map(s=>(<p key={s.id} className="text-xs mt-0.5 truncate">{s.text}</p>))}
+              {selfData.symptoms.length === 0 && <p className="text-xs mt-0.5 text-muted-foreground">None reported</p>}
             </div>
           </div>
 
@@ -351,39 +344,37 @@ const Patient = () => {
           )}
         </section>
 
-        {/* Medical Profile — History + Doctor Notes + Family Health */}
-        <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="rounded-xl border border-border bg-panel p-5 shadow-card">
-            <div className="flex items-center gap-2 mb-3"><ClipboardList className="h-4 w-4 text-primary"/><h2 className="font-semibold text-sm">Medical History</h2></div>
-            <ul className="space-y-2">
-              {medicalHistory.map((h,i) => (
-                <li key={i} className="flex items-start gap-2 text-xs rounded-lg bg-panel-elevated px-3 py-2 border border-border/60">
-                  <span className="h-1.5 w-1.5 rounded-full bg-primary mt-1.5 shrink-0"/>{h}
-                </li>
-              ))}
-            </ul>
+        {/* Medical Profile — linked to Family Hub */}
+        <section className="rounded-xl border border-primary/20 bg-primary/5 p-5 shadow-card">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <ClipboardList className="h-4 w-4 text-primary"/>
+              <h2 className="font-semibold text-sm">Your Health Profile</h2>
+              <span className="text-[10px] text-muted-foreground">from {family.name}</span>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => navigate("/family")} className="text-xs gap-1.5">
+              <Users className="h-3.5 w-3.5"/>Manage in Family Hub
+            </Button>
           </div>
-          <div className="rounded-xl border border-border bg-panel p-5 shadow-card">
-            <div className="flex items-center gap-2 mb-3"><Calendar className="h-4 w-4 text-primary"/><h2 className="font-semibold text-sm">Doctor Notes</h2></div>
-            <ul className="space-y-2">
-              {doctorNotes.map((d,i) => (
-                <li key={i} className="rounded-lg bg-panel-elevated px-3 py-2 border border-border/60">
-                  <p className="text-[10px] text-muted-foreground font-mono-tabular">{d.date}</p>
-                  <p className="text-xs mt-0.5">{d.note}</p>
-                </li>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+            <div className="rounded-lg border border-border/60 bg-panel p-3">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">Medical History ({selfData.medicalHistory.length})</p>
+              {selfData.medicalHistory.slice(0,3).map(h => (
+                <p key={h.id} className="text-xs mt-1 flex items-start gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-blue-400 mt-1.5 shrink-0"/>{h.text}</p>
               ))}
-            </ul>
-          </div>
-          <div className="rounded-xl border border-border bg-panel p-5 shadow-card">
-            <div className="flex items-center gap-2 mb-3"><Users className="h-4 w-4 text-primary"/><h2 className="font-semibold text-sm">Family Health Risks</h2></div>
-            <ul className="space-y-2">
-              {familyHealth.map((f,i) => (
-                <li key={i} className="rounded-lg bg-panel-elevated px-3 py-2 border border-border/60">
-                  <p className="text-xs font-medium">{f.name}</p>
-                  <p className="text-[11px] text-muted-foreground">{f.condition}</p>
-                </li>
+            </div>
+            <div className="rounded-lg border border-border/60 bg-panel p-3">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">Doctor Notes ({selfData.doctorNotes.length})</p>
+              {selfData.doctorNotes.slice(0,2).map(d => (
+                <div key={d.id} className="mt-1"><p className="text-[10px] text-muted-foreground">{d.addedBy} · {d.addedAt}</p><p className="text-xs">{d.text}</p></div>
               ))}
-            </ul>
+            </div>
+            <div className="rounded-lg border border-border/60 bg-panel p-3">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">Family Members ({family.members.length})</p>
+              {family.members.filter(m => m.id !== "self").map(m => (
+                <p key={m.id} className="text-xs mt-1">👤 {m.name} <span className="text-muted-foreground capitalize">({m.relation})</span></p>
+              ))}
+            </div>
           </div>
         </section>
 

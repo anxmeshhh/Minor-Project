@@ -1,177 +1,285 @@
-import { useMemo } from "react";
-import { Link } from "react-router-dom";
+import { useState, useCallback } from "react";
 import { motion } from "framer-motion";
+import { useNavigate } from "react-router-dom";
 import {
-  Users, FileText, CalendarClock, Pill, Activity, ArrowRight, HeartPulse, AlertTriangle,
+  Users, Plus, Brain, Sparkles, Shield, Pill, ClipboardList, FileText,
+  Heart, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Send, Pencil
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { useFamilyHealth } from "@/hooks/useFamilyHealth";
-import { useAuth } from "@/context/AuthContext";
-import { format, isAfter } from "date-fns";
-import { useGloveCheckup } from "@/lib/gloveData";
-import { useNavigate } from "react-router-dom";
+import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
+import { useHealthData, type FamilyMember, type HealthEntry } from "@/context/HealthDataContext";
+import { toast } from "sonner";
 
-interface TileProps {
-  to: string;
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  count: number | string;
-  hint: string;
-}
+const BASE = "http://localhost:5001";
 
-function Tile({ to, icon: Icon, label, count, hint }: TileProps) {
-  return (
-    <Link to={to} className="group">
-      <motion.div whileHover={{ y: -2 }} transition={{ duration: 0.15 }}>
-        <Card className="p-5 bg-panel border-border/60 shadow-card h-full">
-          <div className="flex items-start justify-between">
-            <div className="grid h-10 w-10 place-items-center rounded-lg bg-primary/15 text-primary">
-              <Icon className="h-5 w-5" />
-            </div>
-            <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
-          </div>
-          <div className="mt-4">
-            <div className="text-2xl font-semibold font-mono-tabular">{count}</div>
-            <div className="text-sm font-medium mt-0.5">{label}</div>
-            <div className="text-xs text-muted-foreground mt-1">{hint}</div>
-          </div>
-        </Card>
-      </motion.div>
-    </Link>
-  );
-}
+const CATEGORY_META: Record<string, { icon: any; label: string; color: string; placeholder: string }> = {
+  symptoms:       { icon: AlertTriangle, label: "Symptoms",       color: "text-red-400",    placeholder: "e.g. Chest tightness after walking..." },
+  medications:    { icon: Pill,           label: "Medications",    color: "text-emerald-400", placeholder: "e.g. Metoprolol 50mg — 1 tab, morning..." },
+  medicalHistory: { icon: ClipboardList,  label: "Medical History", color: "text-blue-400",   placeholder: "e.g. Hypertension diagnosed 2022..." },
+  prescriptions:  { icon: FileText,       label: "Prescriptions",  color: "text-amber-400",  placeholder: "e.g. Atorvastatin 20mg — bedtime..." },
+  doctorNotes:    { icon: Pencil,         label: "Doctor Notes",   color: "text-violet-400", placeholder: "e.g. BP 140/90, advised salt reduction..." },
+};
 
 export default function FamilyHub() {
-  const { user } = useAuth();
-  const { members, documents, appointments, medications } = useFamilyHealth();
-  const checkup = useGloveCheckup();
+  const { family, setFamilyName, addEntry, removeEntry, getAllForAi, updateAiScan, addMember } = useHealthData();
   const navigate = useNavigate();
+  const [selectedMember, setSelectedMember] = useState("self");
+  const [editingName, setEditingName] = useState(false);
+  const [nameVal, setNameVal] = useState(family.name);
+  const [inputValues, setInputValues] = useState<Record<string, string>>({});
+  const [scanLoading, setScanLoading] = useState<string | null>(null);
+  const [expandedCat, setExpandedCat] = useState<string | null>("symptoms");
 
-  const upcoming = useMemo(
-    () => appointments
-      .filter((a) => a.status === "scheduled" && isAfter(new Date(a.datetime), new Date()))
-      .sort((a, b) => +new Date(a.datetime) - +new Date(b.datetime))
-      .slice(0, 4),
-    [appointments],
-  );
+  // Add new member
+  const [showAddMember, setShowAddMember] = useState(false);
+  const [newMemberName, setNewMemberName] = useState("");
+  const [newMemberRelation, setNewMemberRelation] = useState("");
 
-  const recentDocs = useMemo(
-    () => [...documents].sort((a, b) => b.uploadedAt - a.uploadedAt).slice(0, 5),
-    [documents],
-  );
+  const member = family.members.find(m => m.id === selectedMember) || family.members[0];
 
-  const activeMeds = medications.filter((m) => m.active).length;
-  const memberName = (id: string) => members.find((m) => m.id === id)?.name ?? "—";
+  const handleAddEntry = (category: string) => {
+    const text = inputValues[category]?.trim();
+    if (!text) return;
+    addEntry(selectedMember, category as any, {
+      id: crypto.randomUUID(), text, addedBy: "Self", addedAt: new Date().toLocaleTimeString(),
+    });
+    setInputValues(v => ({ ...v, [category]: "" }));
+    toast.success(`Added to ${CATEGORY_META[category].label}`);
+  };
+
+  const handleAddMember = () => {
+    if (!newMemberName.trim() || !newMemberRelation.trim()) return;
+    addMember({
+      id: crypto.randomUUID(), name: newMemberName.trim(), relation: newMemberRelation.trim().toLowerCase(),
+      role: "member", symptoms: [], medications: [], medicalHistory: [], prescriptions: [], doctorNotes: [],
+    });
+    toast.success(`${newMemberName} added to ${family.name}`);
+    setNewMemberName(""); setNewMemberRelation(""); setShowAddMember(false);
+  };
+
+  // Run AI + ML scan for a member
+  const runAiScan = useCallback(async (memberId: string) => {
+    setScanLoading(memberId);
+    const data = getAllForAi(memberId);
+    try {
+      const r = await fetch(`${BASE}/api/ai/analyze`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          patient_id: 1,
+          symptoms: data.symptoms, medications: data.medications,
+          medical_history: data.medicalHistory, prescriptions: data.prescriptions,
+          doctor_notes: data.doctorNotes, family_health: data.familyHealth,
+          checkups: [],
+        }),
+      });
+      const res = await r.json();
+      updateAiScan(memberId, {
+        urgency: res.urgency, summary: res.ai_analysis, ts: new Date().toLocaleTimeString(),
+        mlClass: res.ml_class, riskScore: res.risk_score, specialty: res.doctor_specialty,
+      });
+      toast.success(`AI scan complete for ${family.members.find(m => m.id === memberId)?.name}`);
+    } catch {
+      toast.error("AI scan failed — is the server running?");
+    }
+    setScanLoading(null);
+  }, [getAllForAi, updateAiScan, family.members]);
+
+  const urgBadge: Record<string, string> = {
+    safe: "bg-emerald-500/15 text-emerald-400 border-emerald-700/40",
+    visit: "bg-amber-500/15 text-amber-400 border-amber-700/40",
+    emergency: "bg-red-500/15 text-red-400 border-red-700/40 animate-pulse",
+  };
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-      className="container py-8 max-w-6xl"
-    >
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
-          <HeartPulse className="h-6 w-6 text-primary" /> Family Health Hub
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Welcome{user ? `, ${user.name}` : ""}. Everything for your family's health, in one calm space.
-        </p>
-      </div>
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="container py-8 max-w-6xl">
+      {/* Family Group Header */}
+      <header className="flex items-center justify-between mb-6">
+        <div>
+          {editingName ? (
+            <div className="flex gap-2">
+              <Input value={nameVal} onChange={e => setNameVal(e.target.value)} className="text-xl font-bold w-64" autoFocus
+                onKeyDown={e => { if (e.key === "Enter") { setFamilyName(nameVal); setEditingName(false); }}} />
+              <Button size="sm" onClick={() => { setFamilyName(nameVal); setEditingName(false); }}>Save</Button>
+            </div>
+          ) : (
+            <h1 className="text-2xl font-bold tracking-tight cursor-pointer hover:text-primary transition-colors"
+              onClick={() => setEditingName(true)}>
+              {family.name} <Pencil className="inline h-4 w-4 text-muted-foreground ml-1" />
+            </h1>
+          )}
+          <p className="text-sm text-muted-foreground mt-1">Central health hub — all family data feeds into AI analysis</p>
+        </div>
+        <Button variant="outline" onClick={() => setShowAddMember(!showAddMember)}>
+          <Plus className="h-4 w-4 mr-1.5" />Add Member
+        </Button>
+      </header>
 
-      {checkup?.hasAnomaly && (
-        <Card className="p-4 mb-6 bg-critical/10 border-critical/30 border shadow-sm cursor-pointer hover:bg-critical/15 transition-colors" onClick={() => navigate("/discovery")}>
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="bg-critical/20 p-2 rounded-full">
-                <AlertTriangle className="h-5 w-5 text-critical animate-pulse" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-critical">Smart Glove Alert</h3>
-                <p className="text-sm">Abnormal checkup detected: {checkup.details}</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-1 text-sm font-medium text-critical">
-              Find Specialist <ArrowRight className="h-4 w-4" />
-            </div>
+      {showAddMember && (
+        <Card className="p-4 mb-4 flex gap-3 items-end border-primary/30">
+          <div className="flex-1">
+            <label className="text-xs text-muted-foreground">Name</label>
+            <Input value={newMemberName} onChange={e => setNewMemberName(e.target.value)} placeholder="e.g. Amit Sharma" />
           </div>
+          <div className="w-40">
+            <label className="text-xs text-muted-foreground">Relation</label>
+            <Input value={newMemberRelation} onChange={e => setNewMemberRelation(e.target.value)} placeholder="e.g. brother" />
+          </div>
+          <Button onClick={handleAddMember}>Add</Button>
         </Card>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Tile to="/family/members" icon={Users} label="Members" count={members.length}
-          hint="Profiles & medical info" />
-        <Tile to="/family/documents" icon={FileText} label="Documents" count={documents.length}
-          hint="Prescriptions & reports" />
-        <Tile to="/family/appointments" icon={CalendarClock} label="Appointments" count={upcoming.length}
-          hint="Upcoming visits" />
-        <Tile to="/family/medications" icon={Pill} label="Medications" count={activeMeds}
-          hint="Currently active" />
-      </div>
-
-      <div className="grid lg:grid-cols-2 gap-4 mt-6">
-        <Card className="p-5 bg-panel border-border/60 shadow-card">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-medium flex items-center gap-2"><CalendarClock className="h-4 w-4 text-primary" /> Next appointments</h2>
-            <Link to="/family/appointments" className="text-xs text-primary hover:underline">View all</Link>
-          </div>
-          {upcoming.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-6 text-center">Nothing scheduled.</p>
-          ) : (
-            <ul className="divide-y divide-border/60">
-              {upcoming.map((a) => (
-                <li key={a.id} className="py-2.5 flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium truncate">Dr. {a.doctor}</div>
-                    <div className="text-xs text-muted-foreground">{memberName(a.memberId)} · {a.location || "—"}</div>
-                  </div>
-                  <Badge variant="secondary" className="font-mono-tabular shrink-0">
-                    {format(new Date(a.datetime), "d MMM, p")}
-                  </Badge>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-
-        <Card className="p-5 bg-panel border-border/60 shadow-card">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-medium flex items-center gap-2"><FileText className="h-4 w-4 text-primary" /> Recent documents</h2>
-            <Link to="/family/documents" className="text-xs text-primary hover:underline">View all</Link>
-          </div>
-          {recentDocs.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-6 text-center">No documents uploaded yet.</p>
-          ) : (
-            <ul className="divide-y divide-border/60">
-              {recentDocs.map((d) => (
-                <li key={d.id} className="py-2.5 flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium truncate">{d.title}</div>
-                    <div className="text-xs text-muted-foreground">{memberName(d.memberId)} · <span className="capitalize">{d.type}</span></div>
-                  </div>
-                  <Badge variant="secondary" className="font-mono-tabular shrink-0">
-                    {format(d.uploadedAt, "d MMM")}
-                  </Badge>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-      </div>
-
-      <Card className="mt-6 p-5 bg-panel-elevated border-border/60 flex items-center gap-4 flex-wrap">
-        <div className="grid h-10 w-10 place-items-center rounded-lg bg-primary/15 text-primary">
-          <Activity className="h-5 w-5" />
+      <div className="grid grid-cols-12 gap-6">
+        {/* Left Sidebar: Member List (WhatsApp-style) */}
+        <div className="col-span-12 lg:col-span-3 space-y-2">
+          <p className="text-xs uppercase tracking-wider text-muted-foreground px-1 mb-2">Members</p>
+          {family.members.map(m => (
+            <button key={m.id} onClick={() => setSelectedMember(m.id)}
+              className={cn("w-full flex items-center gap-3 rounded-xl px-3 py-3 border text-left transition-all",
+                selectedMember === m.id ? "bg-primary/10 border-primary/40 shadow-sm" : "bg-panel border-border/60 hover:bg-panel-elevated")}>
+              <div className="grid h-9 w-9 place-items-center rounded-full bg-primary/15 text-primary font-semibold text-sm shrink-0">
+                {m.name.charAt(0)}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <p className="text-sm font-medium truncate">{m.name}</p>
+                  <Badge variant={m.role === "admin" ? "default" : "secondary"} className="text-[9px] px-1.5 py-0 h-4">{m.role}</Badge>
+                </div>
+                <p className="text-[11px] text-muted-foreground capitalize">{m.relation}</p>
+              </div>
+              {m.lastAiScan && (
+                <span className={cn("text-[9px] px-1.5 py-0.5 rounded-full border shrink-0", urgBadge[m.lastAiScan.urgency] || urgBadge.safe)}>
+                  {m.lastAiScan.urgency}
+                </span>
+              )}
+            </button>
+          ))}
         </div>
-        <div className="min-w-0 flex-1">
-          <p className="font-medium">Live wearable monitoring</p>
-          <p className="text-sm text-muted-foreground">See real-time vitals from your VitalGlove device.</p>
+
+        {/* Right Panel: Selected Member Health Data */}
+        <div className="col-span-12 lg:col-span-9 space-y-4">
+          {/* Member Header + AI Scan */}
+          <Card className="p-4 flex items-center justify-between border-border/60">
+            <div className="flex items-center gap-3">
+              <div className="grid h-12 w-12 place-items-center rounded-full bg-primary/15 text-primary text-lg font-bold">
+                {member.name.charAt(0)}
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold">{member.name}</h2>
+                <p className="text-xs text-muted-foreground capitalize">{member.relation} · {member.role === "admin" ? "Group Admin" : "Member"}
+                  {" · "}{member.symptoms.length} symptoms · {member.medications.length} meds
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={() => navigate("/discovery")} className="text-xs">
+                <Shield className="h-3.5 w-3.5 mr-1"/>Find Doctor
+              </Button>
+              <Button size="sm" onClick={() => runAiScan(member.id)} disabled={scanLoading === member.id}
+                className="bg-gradient-to-r from-violet-600 to-blue-600 text-white">
+                <Brain className="h-3.5 w-3.5 mr-1.5"/>
+                {scanLoading === member.id ? "Scanning..." : "Run AI + ML Scan"}
+              </Button>
+            </div>
+          </Card>
+
+          {/* AI Scan Result */}
+          {member.lastAiScan && (
+            <Card className="p-4 border-blue-700/30 bg-blue-950/10">
+              <div className="flex items-center gap-2 mb-2">
+                <Sparkles className="h-4 w-4 text-blue-400" />
+                <h3 className="text-sm font-semibold">AI + ML Analysis Result</h3>
+                <span className="text-[10px] text-muted-foreground">Scanned at {member.lastAiScan.ts}</span>
+                <span className={cn("text-xs px-2 py-0.5 rounded-full border font-medium ml-auto",
+                  urgBadge[member.lastAiScan.urgency] || urgBadge.safe)}>
+                  {member.lastAiScan.urgency.toUpperCase()}
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-2 mb-3">
+                <div className="rounded-lg bg-violet-900/20 border border-violet-700/30 p-2">
+                  <p className="text-[10px] text-violet-300">ML Classification</p>
+                  <p className="text-sm text-violet-100 capitalize font-medium">{member.lastAiScan.mlClass?.replace("_"," ")}</p>
+                </div>
+                <div className="rounded-lg bg-blue-900/20 border border-blue-700/30 p-2">
+                  <p className="text-[10px] text-blue-300">Risk Score</p>
+                  <p className="text-sm text-blue-100 font-medium">{member.lastAiScan.riskScore}/100</p>
+                </div>
+                {member.lastAiScan.specialty && (
+                  <div className="rounded-lg bg-amber-900/20 border border-amber-700/30 p-2">
+                    <p className="text-[10px] text-amber-300">Specialist Needed</p>
+                    <p className="text-sm text-amber-100 font-medium">{member.lastAiScan.specialty}</p>
+                  </div>
+                )}
+              </div>
+              <p className="text-sm text-blue-100/80 leading-relaxed whitespace-pre-line">{member.lastAiScan.summary}</p>
+            </Card>
+          )}
+
+          {/* Health Data Categories */}
+          <Tabs defaultValue="symptoms" className="w-full">
+            <TabsList className="grid grid-cols-5 w-full">
+              {Object.entries(CATEGORY_META).map(([key, meta]) => {
+                const Icon = meta.icon;
+                const count = (member[key as keyof FamilyMember] as HealthEntry[])?.length || 0;
+                return (
+                  <TabsTrigger key={key} value={key} className="text-xs gap-1.5">
+                    <Icon className={cn("h-3.5 w-3.5", meta.color)} />
+                    {meta.label} {count > 0 && <Badge variant="secondary" className="text-[9px] h-4 px-1.5">{count}</Badge>}
+                  </TabsTrigger>
+                );
+              })}
+            </TabsList>
+
+            {Object.entries(CATEGORY_META).map(([key, meta]) => {
+              const entries = (member[key as keyof FamilyMember] as HealthEntry[]) || [];
+              const Icon = meta.icon;
+              return (
+                <TabsContent key={key} value={key} className="mt-3">
+                  {/* Input Row */}
+                  <div className="flex gap-2 mb-3">
+                    <div className="relative flex-1">
+                      <Icon className={cn("absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4", meta.color)} />
+                      <Input
+                        value={inputValues[key] || ""}
+                        onChange={e => setInputValues(v => ({ ...v, [key]: e.target.value }))}
+                        placeholder={meta.placeholder}
+                        className="pl-10"
+                        onKeyDown={e => { if (e.key === "Enter") handleAddEntry(key); }}
+                      />
+                    </div>
+                    <Button onClick={() => handleAddEntry(key)} size="sm" className="px-4">
+                      <Send className="h-3.5 w-3.5 mr-1.5" />Add
+                    </Button>
+                  </div>
+
+                  {/* Entries List */}
+                  {entries.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-6">No {meta.label.toLowerCase()} recorded yet. Add one above.</p>
+                  ) : (
+                    <div className="space-y-1.5 max-h-72 overflow-auto">
+                      {entries.map(entry => (
+                        <div key={entry.id} className="flex items-start justify-between gap-2 rounded-lg bg-panel-elevated px-3 py-2.5 border border-border/60 group">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm">{entry.text}</p>
+                            <p className="text-[10px] text-muted-foreground mt-0.5">
+                              Added by <span className="font-medium">{entry.addedBy}</span> · {entry.addedAt}
+                            </p>
+                          </div>
+                          <button onClick={() => removeEntry(member.id, key, entry.id)}
+                            className="text-muted-foreground hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity text-xs">✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </TabsContent>
+              );
+            })}
+          </Tabs>
         </div>
-        <Link to="/" className="text-sm text-primary hover:underline inline-flex items-center gap-1">
-          Open Patient View <ArrowRight className="h-3.5 w-3.5" />
-        </Link>
-      </Card>
+      </div>
     </motion.div>
   );
 }

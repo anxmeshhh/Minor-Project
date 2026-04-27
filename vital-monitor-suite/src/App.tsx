@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { VitalsProvider } from "@/context/VitalsContext";
 import { ConnectionProvider } from "@/context/ConnectionContext";
 import { AuthProvider } from "@/context/AuthContext";
+import { HealthDataProvider } from "@/context/HealthDataContext";
 import { NavBar } from "@/components/NavBar";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import Patient from "./pages/Patient";
@@ -161,7 +162,9 @@ const App = () => (
         <AuthProvider>
           <ConnectionProvider>
             <VitalsProvider>
-              <Shell />
+              <HealthDataProvider>
+                <Shell />
+              </HealthDataProvider>
             </VitalsProvider>
           </ConnectionProvider>
         </AuthProvider>
