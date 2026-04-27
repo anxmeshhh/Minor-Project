@@ -42,11 +42,12 @@
 #define SPO2_OVERLAP           25
 #define TREND_POINTS           64
 
-const char *WIFI_SSID     = "Animesh";
-const char *WIFI_PASSWORD = "12345678";
-// ⚠ Replace YOUR_PC_IP with your actual PC IP (run ipconfig → WiFi adapter).
-// The Vite dev server listens on port 8080 and accepts ESP32 JSON at /api/telemetry.
-const char *API_ENDPOINT  = "http://YOUR_PC_IP:8080/api/telemetry";
+const char *WIFI_SSID      = "Animesh";
+const char *WIFI_PASSWORD  = "12345678";
+// ⚠ Replace YOUR_PC_IP with your actual PC IP (ipconfig → WiFi adapter IPv4).
+// Flask backend runs on port 5001. Vite dev server on port 8080.
+const char *API_ENDPOINT      = "http://YOUR_PC_IP:5001/api/telemetry";  // POST vitals
+const char *COMMAND_ENDPOINT  = "http://YOUR_PC_IP:5001/api/glove/command"; // GET scenario
 
 Adafruit_SSD1306 display(SCREEN_W, SCREEN_H, &Wire, -1);
 Adafruit_MPU6050 mpu;
@@ -58,6 +59,11 @@ bool displayReady  = false;
 bool mpuReady      = false;
 bool tempReady     = false;
 bool max30102Ready = false;
+
+// ── Active scenario received from server wirelessly ──────────────────────────
+char activeScenarioLabel[40] = "Normal Monitoring";  // shown on OLED status bar
+char activeScenarioId[20]    = "normal";
+int  activeTier              = 0;  // 0=safe 1=L1 2=L2 3=L3
 
 enum Mode { MODE_VITALS, MODE_ENV, MODE_ALERT };
 Mode currentMode = MODE_VITALS;
@@ -146,7 +152,9 @@ bool opticalSignalUsable();
 String buildTelemetryJson();
 void sendTelemetry();
 void maybeReconnectWiFi();
+void pollScenarioCommand();
 void serialReport();
+
 
 // ===================== SETUP =====================
 void setup() {
@@ -277,10 +285,12 @@ void loop() {
   updateVibration();
   updateTrend();
   updateDisplay();
-  maybeReconnectWiFi();     // non-blocking reconnect check every 30 s
-  sendTelemetry();          // skips instantly if WiFi is down
+  maybeReconnectWiFi();          // non-blocking reconnect check every 30 s
+  sendTelemetry();               // POST vitals to Flask every 500ms
+  pollScenarioCommand();         // GET active scenario from Flask every 3s (wireless UI sync)
   serialReport();
 }
+
 
 // ===================== SERIAL REPORT =====================
 void serialReport() {
@@ -787,20 +797,71 @@ void sendTelemetry() {
   lastTelemetry = millis();
 
   // Do not send while SpO2 buffer is still filling.
-  // HTTP blocking (even 100 ms) causes burst-processed samples that
-  // confuse checkForBeat() during the critical 3-second collection window.
   if (spo2Samples < SPO2_BUF_LEN) return;
-
-  if (WiFi.status() != WL_CONNECTED) return;   // skip silently
+  if (WiFi.status() != WL_CONNECTED) return;
 
   HTTPClient http;
   http.begin(API_ENDPOINT);
-  http.setTimeout(100);   // 100 ms – local server should respond quickly
+  http.setTimeout(100);
   http.addHeader("Content-Type", "application/json");
   int code = http.POST(buildTelemetryJson());
   if (code < 0) Serial.println("[HTTP]  POST failed: " + String(code));
   http.end();
 }
+
+// ===================== SCENARIO POLL (wireless UI→Glove sync) =====================
+// Every 3 seconds the glove GETs /api/glove/command from the Flask server.
+// When the user clicks a scenario in the browser Demo Panel, the glove OLED
+// updates within 3 seconds to show the scenario label — no reflash needed.
+void pollScenarioCommand() {
+  static unsigned long lastPoll = 0;
+  if (millis() - lastPoll < 3000UL) return;
+  lastPoll = millis();
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  HTTPClient http;
+  http.begin(COMMAND_ENDPOINT);
+  http.setTimeout(500);
+  int code = http.GET();
+  if (code == 200) {
+    String body = http.getString();
+    // Minimal JSON parse without a library — extract "label" and "scenario" fields
+    // Expected: {"scenario":"hypoxia","label":"Hypoxia Event","tier":2,...}
+    auto extractStr = [&](const char *key) -> String {
+      String k = "\"" + String(key) + "\":\"";
+      int start = body.indexOf(k);
+      if (start < 0) return "";
+      start += k.length();
+      int end = body.indexOf('"', start);
+      return (end > start) ? body.substring(start, end) : "";
+    };
+    auto extractInt = [&](const char *key) -> int {
+      String k = "\"" + String(key) + "\":";
+      int start = body.indexOf(k);
+      if (start < 0) return 0;
+      start += k.length();
+      int end = start;
+      while (end < (int)body.length() && (isDigit(body[end]) || body[end] == '-')) end++;
+      return body.substring(start, end).toInt();
+    };
+
+    String label    = extractStr("label");
+    String scenario = extractStr("scenario");
+    int    tier     = extractInt("tier");
+
+    if (label.length() > 0) {
+      label.toCharArray(activeScenarioLabel, sizeof(activeScenarioLabel));
+      scenario.toCharArray(activeScenarioId,    sizeof(activeScenarioId));
+      activeTier = tier;
+      Serial.printf("[CMD]  Scenario: %s  Tier: %d\n", activeScenarioLabel, activeTier);
+      // Force a display refresh to show new scenario on OLED
+      if (displayReady) display.clearDisplay();
+    }
+  }
+  http.end();
+}
+
+
 
 // ===================== BOOT SCREEN =====================
 void showBoot(const char *msg) {
