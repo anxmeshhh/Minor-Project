@@ -1,39 +1,70 @@
 import { useState } from "react";
-import { Search, HeartPulse, Filter } from "lucide-react";
+import { Search, HeartPulse, Filter, CheckCircle2, XCircle, Brain, Clock } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useNavigate } from "react-router-dom";
 import { Sparkline } from "@/components/Sparkline";
+import { cn } from "@/lib/utils";
 
-const MOCK_FLEET = [
-  { id: "PT-001", name: "Riya Patient", hr: 72, spo2: 98, temp: 36.5, risk: "Low", status: "Stable", recentAlert: "None", history: [70, 72, 71, 74, 72, 71, 72] },
-  { id: "PT-002", name: "James Holden", hr: 135, spo2: 92, temp: 37.1, risk: "Critical", status: "Needs Attention", recentAlert: "Abnormal HR", history: [80, 85, 95, 110, 125, 130, 135] },
-  { id: "PT-003", name: "Naomi Nagata", hr: 65, spo2: 99, temp: 36.8, risk: "Low", status: "Stable", recentAlert: "None", history: [68, 66, 65, 64, 65, 66, 65] },
-  { id: "PT-004", name: "Amos Burton", hr: 90, spo2: 95, temp: 38.2, risk: "Caution", status: "Observation", recentAlert: "Slight Fever", history: [75, 78, 82, 85, 88, 89, 90] },
-  { id: "PT-005", name: "Alex Kamal", hr: 68, spo2: 97, temp: 36.6, risk: "Low", status: "Stable", recentAlert: "None", history: [70, 69, 68, 68, 67, 68, 68] },
+interface PatientReq {
+  id: string; name: string; age: number; symptoms: string; mlClass: string;
+  urgency: "safe"|"visit"|"emergency"; hr: number; spo2: number; temp: number;
+  risk: string; status: "pending"|"accepted"|"rejected"; history: number[];
+  recentAlert: string; meds: string;
+}
+
+const MOCK_FLEET: PatientReq[] = [
+  { id: "PT-001", name: "Riya Sharma", age: 64, symptoms: "Chest tightness, fatigue", mlClass: "tachycardia",
+    urgency: "visit", hr: 135, spo2: 92, temp: 37.1, risk: "Critical", status: "pending",
+    recentAlert: "Abnormal HR", history: [80,85,95,110,125,130,135], meds: "Metoprolol 50mg, Aspirin 75mg" },
+  { id: "PT-002", name: "Amit Patel", age: 45, symptoms: "Shortness of breath", mlClass: "hypoxia",
+    urgency: "emergency", hr: 88, spo2: 87, temp: 36.8, risk: "Critical", status: "pending",
+    recentAlert: "Low SpO2", history: [97,96,94,92,90,88,87], meds: "None" },
+  { id: "PT-003", name: "Naomi Singh", age: 38, symptoms: "None", mlClass: "normal",
+    urgency: "safe", hr: 65, spo2: 99, temp: 36.8, risk: "Low", status: "accepted",
+    recentAlert: "None", history: [68,66,65,64,65,66,65], meds: "Vitamin D3" },
+  { id: "PT-004", name: "Rajesh Kumar", age: 41, symptoms: "Mild fever, body ache", mlClass: "fever",
+    urgency: "visit", hr: 90, spo2: 95, temp: 38.2, risk: "Caution", status: "pending",
+    recentAlert: "Slight Fever", history: [75,78,82,85,88,89,90], meds: "Paracetamol 500mg" },
+  { id: "PT-005", name: "Priya Mehra", age: 55, symptoms: "Dizziness on standing", mlClass: "bradycardia",
+    urgency: "visit", hr: 42, spo2: 97, temp: 36.6, risk: "Caution", status: "accepted",
+    recentAlert: "Low HR", history: [55,52,48,45,43,42,42], meds: "Amlodipine 5mg" },
 ];
+
+const urgBadge = { safe: "bg-emerald-500/15 text-emerald-400 border-emerald-700/40",
+  visit: "bg-amber-500/15 text-amber-400 border-amber-700/40",
+  emergency: "bg-red-500/15 text-red-400 border-red-700/40 animate-pulse" };
+const urgLabel = { safe: "Safe", visit: "Needs Visit", emergency: "Emergency" };
 
 export default function DoctorDashboard() {
   const [search, setSearch] = useState("");
+  const [patients, setPatients] = useState(MOCK_FLEET);
+  const [tab, setTab] = useState<"requests"|"accepted"|"all">("requests");
   const navigate = useNavigate();
 
-  // Smart Logic: Sort patients by Risk Level (Critical first, Caution second, Low last)
-  const sortedFleet = [...MOCK_FLEET].sort((a, b) => {
-    const riskScore = (risk: string) => risk === "Critical" ? 3 : risk === "Caution" ? 2 : 1;
-    return riskScore(b.risk) - riskScore(a.risk);
-  });
+  const filtered = patients
+    .filter(p => {
+      if (tab === "requests") return p.status === "pending";
+      if (tab === "accepted") return p.status === "accepted";
+      return true;
+    })
+    .filter(p => p.name.toLowerCase().includes(search.toLowerCase()) || p.id.toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => {
+      const s = (r: string) => r === "Critical" ? 3 : r === "Caution" ? 2 : 1;
+      return s(b.risk) - s(a.risk);
+    });
 
-  const filteredFleet = sortedFleet.filter(p => 
-    p.name.toLowerCase().includes(search.toLowerCase()) || 
-    p.id.toLowerCase().includes(search.toLowerCase())
-  );
+  const accept = (id: string) => setPatients(ps => ps.map(p => p.id === id ? {...p, status: "accepted"} : p));
+  const reject = (id: string) => setPatients(ps => ps.map(p => p.id === id ? {...p, status: "rejected"} : p));
+
+  const pendingCount = patients.filter(p => p.status === "pending").length;
 
   return (
     <main className="theme-clinical min-h-[calc(100vh-3.5rem)] bg-background text-foreground">
-      <div className="container py-8 max-w-6xl">
-        <header className="mb-8 flex items-end justify-between border-b pb-4">
+      <div className="container py-8 max-w-7xl">
+        <header className="mb-6 flex items-end justify-between border-b pb-4">
           <div>
             <p className="text-sm font-semibold tracking-widest text-primary uppercase flex items-center gap-2">
               <HeartPulse className="h-4 w-4" /> Clinician Dashboard
@@ -41,75 +72,103 @@ export default function DoctorDashboard() {
             <h1 className="text-3xl font-bold mt-1">Patient Fleet</h1>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline"><Filter className="h-4 w-4 mr-2" /> Filter Views</Button>
+            <Badge variant="secondary" className="text-sm px-3 py-1.5">{patients.filter(p=>p.status==="accepted").length} Active Patients</Badge>
+            {pendingCount > 0 && <Badge variant="destructive" className="text-sm px-3 py-1.5 animate-pulse">{pendingCount} Pending Requests</Badge>}
           </div>
         </header>
+
+        {/* Tabs */}
+        <div className="flex gap-2 mb-4">
+          {(["requests","accepted","all"] as const).map(t => (
+            <button key={t} onClick={() => setTab(t)}
+              className={cn("px-4 py-2 rounded-lg text-sm font-medium border transition-colors",
+                tab===t ? "bg-primary text-primary-foreground border-primary" : "bg-panel border-border hover:bg-panel-elevated")}>
+              {t === "requests" ? `Requests (${pendingCount})` : t === "accepted" ? "My Patients" : "All"}
+            </button>
+          ))}
+        </div>
 
         <div className="bg-panel border border-border rounded-xl shadow-sm overflow-hidden">
           <div className="p-4 border-b bg-card/50 flex justify-between items-center">
             <div className="relative w-80">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input 
-                placeholder="Search assigned patients..." 
-                className="pl-9 bg-background"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
+              <Input placeholder="Search patients..." className="pl-9 bg-background" value={search} onChange={e => setSearch(e.target.value)} />
             </div>
-            <p className="text-sm text-muted-foreground">Showing {filteredFleet.length} patients</p>
+            <p className="text-sm text-muted-foreground">Showing {filtered.length} patients</p>
           </div>
-          
+
           <Table>
             <TableHeader className="bg-muted/30">
               <TableRow>
                 <TableHead>ID</TableHead>
-                <TableHead>Patient Name</TableHead>
-                <TableHead className="text-right">HR (BPM)</TableHead>
-                <TableHead className="w-[120px]">HR Trend (1h)</TableHead>
-                <TableHead className="text-right">SpO₂ (%)</TableHead>
-                <TableHead>Recent Alert</TableHead>
-                <TableHead className="text-right">Risk Level</TableHead>
+                <TableHead>Patient</TableHead>
+                <TableHead>Symptoms / Meds</TableHead>
+                <TableHead className="w-[100px]">HR Trend</TableHead>
+                <TableHead className="text-right">HR</TableHead>
+                <TableHead className="text-right">SpO2</TableHead>
+                <TableHead>ML Class</TableHead>
+                <TableHead>AI Urgency</TableHead>
+                <TableHead>Risk</TableHead>
+                <TableHead className="text-right">Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredFleet.map((patient) => (
-                <TableRow 
-                  key={patient.id} 
-                  className="cursor-pointer hover:bg-muted/50 transition-colors"
-                  onClick={() => navigate(`/doctor/patient/${patient.id}`)}
-                >
-                  <TableCell className="font-mono text-xs">{patient.id}</TableCell>
-                  <TableCell className="font-medium">{patient.name}</TableCell>
-                  <TableCell className={`text-right font-mono ${patient.hr > 100 || patient.hr < 60 ? 'text-critical font-bold' : ''}`}>
-                    {patient.hr}
+              {filtered.map(p => (
+                <TableRow key={p.id} className={cn("transition-colors",
+                  p.status==="pending"?"bg-amber-950/5":"",
+                  p.status==="rejected"?"opacity-40")}>
+                  <TableCell className="font-mono text-xs">{p.id}</TableCell>
+                  <TableCell>
+                    <p className="font-medium text-sm">{p.name}</p>
+                    <p className="text-xs text-muted-foreground">Age {p.age}</p>
                   </TableCell>
                   <TableCell>
-                    <Sparkline 
-                      data={patient.history} 
-                      width={100} 
-                      height={30} 
-                      stroke={patient.risk === "Critical" ? "hsl(var(--critical))" : patient.risk === "Caution" ? "hsl(var(--caution))" : "hsl(var(--primary))"}
-                      fill={patient.risk === "Critical" ? "hsl(var(--critical) / 0.2)" : patient.risk === "Caution" ? "hsl(var(--caution) / 0.2)" : "hsl(var(--primary) / 0.2)"}
-                    />
+                    <p className="text-xs">{p.symptoms || "None"}</p>
+                    <p className="text-[10px] text-muted-foreground">{p.meds}</p>
                   </TableCell>
-                  <TableCell className={`text-right font-mono ${patient.spo2 < 95 ? 'text-caution font-bold' : ''}`}>
-                    {patient.spo2}%
+                  <TableCell>
+                    <Sparkline data={p.history} width={90} height={28}
+                      stroke={p.risk==="Critical"?"hsl(var(--critical))":p.risk==="Caution"?"hsl(var(--caution))":"hsl(var(--primary))"}
+                      fill={p.risk==="Critical"?"hsl(var(--critical) / 0.2)":p.risk==="Caution"?"hsl(var(--caution) / 0.2)":"hsl(var(--primary) / 0.2)"} />
                   </TableCell>
-                  <TableCell className="text-muted-foreground text-sm">{patient.recentAlert}</TableCell>
-                  <TableCell className="text-right">
-                    <Badge 
-                      variant={patient.risk === "Critical" ? "destructive" : patient.risk === "Caution" ? "secondary" : "outline"}
-                      className={patient.risk === "Critical" ? "bg-critical text-critical-foreground animate-pulse" : patient.risk === "Caution" ? "bg-caution text-caution-foreground" : ""}
-                    >
-                      {patient.risk}
+                  <TableCell className={cn("text-right font-mono text-sm", (p.hr>120||p.hr<50)&&"text-critical font-bold")}>{p.hr}</TableCell>
+                  <TableCell className={cn("text-right font-mono text-sm", p.spo2<94&&"text-critical font-bold")}>{p.spo2}%</TableCell>
+                  <TableCell>
+                    <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border border-violet-700/40 bg-violet-900/20 text-violet-300">
+                      <Brain className="h-3 w-3"/>{p.mlClass}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <span className={cn("text-xs px-2 py-0.5 rounded-full border font-medium", urgBadge[p.urgency])}>{urgLabel[p.urgency]}</span>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={p.risk==="Critical"?"destructive":p.risk==="Caution"?"secondary":"outline"}
+                      className={p.risk==="Critical"?"bg-critical text-critical-foreground animate-pulse":p.risk==="Caution"?"bg-caution text-caution-foreground":""}>
+                      {p.risk}
                     </Badge>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {p.status === "pending" ? (
+                      <div className="flex gap-1.5 justify-end">
+                        <Button size="sm" variant="default" onClick={(e) => {e.stopPropagation(); accept(p.id);}} className="h-7 px-2.5 text-xs">
+                          <CheckCircle2 className="h-3.5 w-3.5 mr-1"/>Accept
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={(e) => {e.stopPropagation(); reject(p.id);}} className="h-7 px-2.5 text-xs border-red-700/40 text-red-400 hover:bg-red-900/20">
+                          <XCircle className="h-3.5 w-3.5 mr-1"/>Reject
+                        </Button>
+                      </div>
+                    ) : p.status === "accepted" ? (
+                      <Button size="sm" variant="outline" onClick={() => navigate(`/doctor/patient/${p.id}`)} className="h-7 px-2.5 text-xs">
+                        View Details
+                      </Button>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">Rejected</span>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
-              {filteredFleet.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No patients found matching your search.</TableCell>
-                </TableRow>
+              {filtered.length === 0 && (
+                <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">No patients found.</TableCell></TableRow>
               )}
             </TableBody>
           </Table>

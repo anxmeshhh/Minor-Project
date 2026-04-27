@@ -29,6 +29,10 @@ export default function FamilyMembers() {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<FamilyMember>(empty());
   const [editing, setEditing] = useState(false);
+  const [groupName, setGroupName] = useState("The Sharma Family");
+  const [editingGroup, setEditingGroup] = useState(false);
+  const [quickName, setQuickName] = useState("");
+  const [quickRelation, setQuickRelation] = useState<Relation>("spouse");
 
   const onAdd = () => { setDraft(empty()); setEditing(false); setOpen(true); };
   const onEdit = (m: FamilyMember) => { setDraft({ ...m }); setEditing(true); setOpen(true); };
@@ -48,6 +52,15 @@ export default function FamilyMembers() {
     toast.success("Member removed");
   };
 
+  const quickAdd = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickName.trim()) return;
+    membersStore.upsert(email, { ...empty(), name: quickName.trim(), relation: quickRelation });
+    refresh();
+    setQuickName("");
+    toast.success(`${quickName.trim()} added to ${groupName}`);
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -55,14 +68,51 @@ export default function FamilyMembers() {
       transition={{ duration: 0.3 }}
       className="container py-8 max-w-5xl"
     >
-      <div className="flex items-center justify-between mb-6 gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
-            <Users className="h-5 w-5 text-primary" /> Family Members
-          </h1>
-          <p className="text-sm text-muted-foreground">Profiles for everyone you care for.</p>
+      {/* Family Group Header */}
+      <div className="rounded-xl border border-border bg-panel p-5 mb-6 shadow-card">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="grid h-12 w-12 place-items-center rounded-full bg-primary/15 text-primary">
+              <Users className="h-6 w-6" />
+            </div>
+            <div>
+              {editingGroup ? (
+                <div className="flex gap-2 items-center">
+                  <Input value={groupName} onChange={e => setGroupName(e.target.value)} className="h-8 w-56 text-lg font-semibold" autoFocus
+                    onKeyDown={e => e.key === "Enter" && setEditingGroup(false)} />
+                  <Button size="sm" onClick={() => { setEditingGroup(false); toast.success("Family name updated"); }}>Save</Button>
+                </div>
+              ) : (
+                <h1 className="text-xl font-semibold tracking-tight cursor-pointer hover:text-primary transition-colors" onClick={() => setEditingGroup(true)}>
+                  {groupName} <Pencil className="inline h-3.5 w-3.5 ml-1 text-muted-foreground" />
+                </h1>
+              )}
+              <p className="text-xs text-muted-foreground">{members.length} members · Created by you (Admin)</p>
+            </div>
+          </div>
+          <Button onClick={onAdd} className="gap-2"><Plus className="h-4 w-4" />Add Member</Button>
         </div>
-        <Button onClick={onAdd} className="gap-2"><Plus className="h-4 w-4" />Add member</Button>
+
+        {/* Quick Add by Name */}
+        <form onSubmit={quickAdd} className="flex gap-2 items-center bg-panel-elevated rounded-lg border border-border/60 p-3">
+          <span className="text-xs text-muted-foreground shrink-0">Quick add:</span>
+          <Input value={quickName} onChange={e => setQuickName(e.target.value)} placeholder="Enter family member name..."
+            className="h-8 flex-1 text-sm" />
+          <Select value={quickRelation} onValueChange={v => setQuickRelation(v as Relation)}>
+            <SelectTrigger className="h-8 w-28"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {RELATIONS.filter(r => r !== "self").map(r => (
+                <SelectItem key={r} value={r} className="capitalize">{r}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button type="submit" size="sm" className="h-8"><Plus className="h-3.5 w-3.5 mr-1" />Add</Button>
+        </form>
+      </div>
+
+      {/* Member Grid */}
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-sm uppercase tracking-widest text-muted-foreground">Members</h2>
       </div>
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -81,7 +131,12 @@ export default function FamilyMembers() {
                   <div className="grid h-10 w-10 place-items-center rounded-full bg-primary/15 text-primary font-semibold">
                     {m.name.slice(0, 1).toUpperCase()}
                   </div>
-                  <Badge variant="secondary" className="capitalize">{m.relation}</Badge>
+                  <div className="flex gap-1.5">
+                    <Badge variant={m.relation === "self" ? "default" : "secondary"} className="text-[10px]">
+                      {m.relation === "self" ? "Admin" : "Member"}
+                    </Badge>
+                    <Badge variant="secondary" className="capitalize text-[10px]">{m.relation}</Badge>
+                  </div>
                 </div>
                 <h3 className="mt-3 font-medium">{m.name}</h3>
                 <dl className="mt-2 space-y-1 text-xs text-muted-foreground">
