@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import {
   Users, Plus, Brain, Sparkles, Shield, Pill, ClipboardList, FileText,
-  Heart, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Send, Pencil, Bell, Calendar, Clock
+  Heart, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Send, Pencil, Bell, Calendar, Clock, Trash2
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,55 +16,49 @@ import { toast } from "sonner";
 
 const BASE = "http://localhost:5001";
 
-const CATEGORY_META: Record<string, { icon: any; label: string; color: string; placeholder: string }> = {
-  symptoms:       { icon: AlertTriangle, label: "Symptoms",       color: "text-red-400",    placeholder: "e.g. Chest tightness after walking..." },
-  medications:    { icon: Pill,           label: "Medications",    color: "text-emerald-400", placeholder: "e.g. Metoprolol 50mg — 1 tab, morning..." },
-  medicalHistory: { icon: ClipboardList,  label: "Medical History", color: "text-blue-400",   placeholder: "e.g. Hypertension diagnosed 2022..." },
-  prescriptions:  { icon: FileText,       label: "Prescriptions",  color: "text-amber-400",  placeholder: "e.g. Atorvastatin 20mg — bedtime..." },
-  doctorNotes:    { icon: Pencil,         label: "Doctor Notes",   color: "text-violet-400", placeholder: "e.g. BP 140/90, advised salt reduction..." },
+const CATEGORY_META: Record<string, { icon: any; label: string; color: string; placeholder: string; dbKey: string }> = {
+  symptoms:       { icon: AlertTriangle, label: "Symptoms",        color: "text-red-400",     placeholder: "e.g. Chest tightness after walking...", dbKey: "symptoms" },
+  medications:    { icon: Pill,           label: "Medications",     color: "text-emerald-400", placeholder: "e.g. Metoprolol 50mg — 1 tab, morning...", dbKey: "medications" },
+  medicalHistory: { icon: ClipboardList,  label: "Medical History", color: "text-blue-400",    placeholder: "e.g. Hypertension diagnosed 2022...", dbKey: "medical_history" },
+  prescriptions:  { icon: FileText,       label: "Prescriptions",  color: "text-amber-400",   placeholder: "e.g. Atorvastatin 20mg — bedtime...", dbKey: "prescriptions" },
+  doctorNotes:    { icon: Pencil,         label: "Doctor Notes",   color: "text-violet-400",  placeholder: "e.g. BP 140/90, advised salt reduction...", dbKey: "doctor_notes" },
 };
 
 export default function FamilyHub() {
-  const { family, setFamilyName, addEntry, removeEntry, getAllForAi, updateAiScan, addMember, notifications, doctorRequests, createDoctorRequest, markRead, unreadCount } = useHealthData();
+  const { family, addEntry, deleteEntry, getAllForAi, updateAiScan, addMember, deleteMember,
+    notifications, doctorRequests, createDoctorRequest, markRead, unreadCount, loading } = useHealthData();
   const navigate = useNavigate();
-  const [selectedMember, setSelectedMember] = useState("self");
-  const [editingName, setEditingName] = useState(false);
-  const [nameVal, setNameVal] = useState(family.name);
+  const [selectedMemberId, setSelectedMemberId] = useState<number | null>(null);
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
-  const [scanLoading, setScanLoading] = useState<string | null>(null);
+  const [scanLoading, setScanLoading] = useState<number | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
-
-  // Add new member
   const [showAddMember, setShowAddMember] = useState(false);
   const [newMemberName, setNewMemberName] = useState("");
   const [newMemberRelation, setNewMemberRelation] = useState("");
 
-  const member = family.members.find(m => m.id === selectedMember) || family.members[0];
+  // Find selected member — default to first member
+  const member = family.members.find(m => m.id === selectedMemberId) || family.members[0];
+  const memberId = member?.id;
 
-  const handleAddEntry = (category: string) => {
+  const handleAddEntry = async (category: string) => {
     const text = inputValues[category]?.trim();
-    if (!text) return;
-    addEntry(selectedMember, category as any, {
-      id: crypto.randomUUID(), text, addedBy: "Self", addedAt: new Date().toLocaleTimeString(),
-    });
+    if (!text || !memberId) return;
+    await addEntry(memberId, category, text, "Self");
     setInputValues(v => ({ ...v, [category]: "" }));
-    toast.success(`Added to ${CATEGORY_META[category].label}`);
+    toast.success(`Added to ${CATEGORY_META[category]?.label || category}`);
   };
 
-  const handleAddMember = () => {
+  const handleAddMember = async () => {
     if (!newMemberName.trim() || !newMemberRelation.trim()) return;
-    addMember({
-      id: crypto.randomUUID(), name: newMemberName.trim(), relation: newMemberRelation.trim().toLowerCase(),
-      role: "member", symptoms: [], medications: [], medicalHistory: [], prescriptions: [], doctorNotes: [],
-    });
+    await addMember(newMemberName.trim(), newMemberRelation.trim().toLowerCase());
     toast.success(`${newMemberName} added to ${family.name}`);
     setNewMemberName(""); setNewMemberRelation(""); setShowAddMember(false);
   };
 
   // Run AI + ML scan for a member
-  const runAiScan = useCallback(async (memberId: string) => {
-    setScanLoading(memberId);
-    const data = getAllForAi(memberId);
+  const runAiScan = useCallback(async (mid: number) => {
+    setScanLoading(mid);
+    const data = getAllForAi(mid);
     try {
       const r = await fetch(`${BASE}/api/ai/analyze`, {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -77,11 +71,11 @@ export default function FamilyHub() {
         }),
       });
       const res = await r.json();
-      updateAiScan(memberId, {
+      updateAiScan(mid, {
         urgency: res.urgency, summary: res.ai_analysis, ts: new Date().toLocaleTimeString(),
         mlClass: res.ml_class, riskScore: res.risk_score, specialty: res.doctor_specialty,
       });
-      toast.success(`AI scan complete for ${family.members.find(m => m.id === memberId)?.name}`);
+      toast.success(`AI scan complete for ${family.members.find(m => m.id === mid)?.name}`);
     } catch {
       toast.error("AI scan failed — is the server running?");
     }
@@ -94,24 +88,16 @@ export default function FamilyHub() {
     emergency: "bg-red-500/15 text-red-400 border-red-700/40 animate-pulse",
   };
 
+  if (loading) return <div className="container py-20 text-center text-muted-foreground">Loading from database...</div>;
+  if (!member) return <div className="container py-20 text-center text-muted-foreground">No family members found.</div>;
+
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="container py-8 max-w-6xl">
       {/* Family Group Header */}
       <header className="flex items-center justify-between mb-6">
         <div>
-          {editingName ? (
-            <div className="flex gap-2">
-              <Input value={nameVal} onChange={e => setNameVal(e.target.value)} className="text-xl font-bold w-64" autoFocus
-                onKeyDown={e => { if (e.key === "Enter") { setFamilyName(nameVal); setEditingName(false); }}} />
-              <Button size="sm" onClick={() => { setFamilyName(nameVal); setEditingName(false); }}>Save</Button>
-            </div>
-          ) : (
-            <h1 className="text-2xl font-bold tracking-tight cursor-pointer hover:text-primary transition-colors"
-              onClick={() => setEditingName(true)}>
-              {family.name} <Pencil className="inline h-4 w-4 text-muted-foreground ml-1" />
-            </h1>
-          )}
-          <p className="text-sm text-muted-foreground mt-1">Central health hub — all family data feeds into AI + ML pipeline</p>
+          <h1 className="text-2xl font-bold tracking-tight">{family.name}</h1>
+          <p className="text-sm text-muted-foreground mt-1">Central health hub — all data from MySQL database (CRUD enabled)</p>
         </div>
         <div className="flex items-center gap-2">
           <div className="relative">
@@ -132,7 +118,7 @@ export default function FamilyHub() {
       {showNotifications && (
         <Card className="p-4 mb-4 border-blue-700/30 bg-blue-950/10 max-h-64 overflow-auto">
           <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
-            <Bell className="h-4 w-4 text-blue-400" />Notifications & Alerts
+            <Bell className="h-4 w-4 text-blue-400" />Notifications & Alerts (from DB)
           </h3>
           {notifications.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-2">No notifications</p>
@@ -141,16 +127,15 @@ export default function FamilyHub() {
               {notifications.slice(0, 8).map(n => (
                 <div key={n.id} onClick={() => markRead(n.id)}
                   className={cn("rounded-lg px-3 py-2 border cursor-pointer transition-all",
-                    n.read ? "border-border/40 bg-panel opacity-60" : "border-blue-700/40 bg-blue-900/10")}>
+                    n.is_read ? "border-border/40 bg-panel opacity-60" : "border-blue-700/40 bg-blue-900/10")}>
                   <div className="flex items-center gap-2">
                     {n.type === "doctor_response" && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />}
                     {n.type === "ai_scan" && <Brain className="h-3.5 w-3.5 text-violet-400 shrink-0" />}
                     {n.type === "alert" && <AlertTriangle className="h-3.5 w-3.5 text-amber-400 shrink-0" />}
                     {n.type === "member_update" && <Users className="h-3.5 w-3.5 text-blue-400 shrink-0" />}
-                    {n.type === "appointment" && <Calendar className="h-3.5 w-3.5 text-primary shrink-0" />}
                     <p className="text-xs font-medium flex-1">{n.title}</p>
-                    <span className="text-[10px] text-muted-foreground shrink-0">{n.ts}</span>
-                    {!n.read && <span className="h-2 w-2 rounded-full bg-blue-400" />}
+                    <span className="text-[10px] text-muted-foreground shrink-0">{n.created_at}</span>
+                    {!n.is_read && <span className="h-2 w-2 rounded-full bg-blue-400" />}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1 whitespace-pre-line">{n.message}</p>
                 </div>
@@ -167,9 +152,9 @@ export default function FamilyHub() {
             <Card key={r.id} className={cn("px-3 py-2 flex items-center gap-2 shrink-0 text-xs",
               r.status === "pending" ? "border-amber-700/40" : "border-emerald-700/40")}>
               {r.status === "pending" ? <Clock className="h-3.5 w-3.5 text-amber-400" /> : <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />}
-              <span>{r.memberName}</span>
+              <span>{r.member_name}</span>
               <Badge variant={r.status === "pending" ? "secondary" : "default"} className="text-[9px] h-4 px-1.5">{r.status}</Badge>
-              {r.doctorName && <span className="text-muted-foreground">by {r.doctorName}</span>}
+              {r.doctor_name && <span className="text-muted-foreground">by {r.doctor_name}</span>}
             </Card>
           ))}
         </div>
@@ -190,13 +175,13 @@ export default function FamilyHub() {
       )}
 
       <div className="grid grid-cols-12 gap-6">
-        {/* Left Sidebar: Member List (WhatsApp-style) */}
+        {/* Left Sidebar: Member List */}
         <div className="col-span-12 lg:col-span-3 space-y-2">
-          <p className="text-xs uppercase tracking-wider text-muted-foreground px-1 mb-2">Members</p>
+          <p className="text-xs uppercase tracking-wider text-muted-foreground px-1 mb-2">Members ({family.members.length})</p>
           {family.members.map(m => (
-            <button key={m.id} onClick={() => setSelectedMember(m.id)}
+            <button key={m.id} onClick={() => setSelectedMemberId(m.id)}
               className={cn("w-full flex items-center gap-3 rounded-xl px-3 py-3 border text-left transition-all",
-                selectedMember === m.id ? "bg-primary/10 border-primary/40 shadow-sm" : "bg-panel border-border/60 hover:bg-panel-elevated")}>
+                memberId === m.id ? "bg-primary/10 border-primary/40 shadow-sm" : "bg-panel border-border/60 hover:bg-panel-elevated")}>
               <div className="grid h-9 w-9 place-items-center rounded-full bg-primary/15 text-primary font-semibold text-sm shrink-0">
                 {m.name.charAt(0)}
               </div>
@@ -205,7 +190,7 @@ export default function FamilyHub() {
                   <p className="text-sm font-medium truncate">{m.name}</p>
                   <Badge variant={m.role === "admin" ? "default" : "secondary"} className="text-[9px] px-1.5 py-0 h-4">{m.role}</Badge>
                 </div>
-                <p className="text-[11px] text-muted-foreground capitalize">{m.relation}</p>
+                <p className="text-[11px] text-muted-foreground capitalize">{m.relation} · DB ID: {m.id}</p>
               </div>
               {m.lastAiScan && (
                 <span className={cn("text-[9px] px-1.5 py-0.5 rounded-full border shrink-0", urgBadge[m.lastAiScan.urgency] || urgBadge.safe)}>
@@ -218,7 +203,7 @@ export default function FamilyHub() {
 
         {/* Right Panel: Selected Member Health Data */}
         <div className="col-span-12 lg:col-span-9 space-y-4">
-          {/* Member Header + AI Scan */}
+          {/* Member Header + Actions */}
           <Card className="p-4 flex items-center justify-between border-border/60">
             <div className="flex items-center gap-3">
               <div className="grid h-12 w-12 place-items-center rounded-full bg-primary/15 text-primary text-lg font-bold">
@@ -226,8 +211,9 @@ export default function FamilyHub() {
               </div>
               <div>
                 <h2 className="text-lg font-semibold">{member.name}</h2>
-                <p className="text-xs text-muted-foreground capitalize">{member.relation} · {member.role === "admin" ? "Group Admin" : "Member"}
-                  {" · "}{member.symptoms.length} symptoms · {member.medications.length} meds
+                <p className="text-xs text-muted-foreground capitalize">
+                  {member.relation} · {member.role === "admin" ? "Group Admin" : "Member"}
+                  {" · "}{member.symptoms.length} symptoms · {member.medications.length} meds · {member.medicalHistory.length} history
                 </p>
               </div>
             </div>
@@ -235,16 +221,16 @@ export default function FamilyHub() {
               <Button size="sm" variant="outline" onClick={() => navigate("/discovery")} className="text-xs">
                 <Shield className="h-3.5 w-3.5 mr-1"/>Find Doctor
               </Button>
-              <Button size="sm" variant="outline" onClick={() => {
-                createDoctorRequest(member.id, member.lastAiScan || undefined);
+              <Button size="sm" variant="outline" onClick={async () => {
+                await createDoctorRequest(memberId, member.lastAiScan || undefined);
                 toast.success(`Doctor request sent for ${member.name} with full health data`);
               }} className="text-xs border-emerald-700/40 text-emerald-400 hover:bg-emerald-900/20">
                 <Send className="h-3.5 w-3.5 mr-1"/>Request Doctor
               </Button>
-              <Button size="sm" onClick={() => runAiScan(member.id)} disabled={scanLoading === member.id}
+              <Button size="sm" onClick={() => runAiScan(memberId)} disabled={scanLoading === memberId}
                 className="bg-gradient-to-r from-violet-600 to-blue-600 text-white text-xs">
                 <Brain className="h-3.5 w-3.5 mr-1.5"/>
-                {scanLoading === member.id ? "Scanning..." : "Run AI + ML Scan"}
+                {scanLoading === memberId ? "Scanning..." : "Run AI + ML Scan"}
               </Button>
             </div>
           </Card>
@@ -281,12 +267,13 @@ export default function FamilyHub() {
             </Card>
           )}
 
-          {/* Health Data Categories */}
+          {/* Health Data Categories with CRUD */}
           <Tabs defaultValue="symptoms" className="w-full">
             <TabsList className="grid grid-cols-5 w-full">
               {Object.entries(CATEGORY_META).map(([key, meta]) => {
                 const Icon = meta.icon;
-                const count = (member[key as keyof FamilyMember] as HealthEntry[])?.length || 0;
+                const entries = member[key as keyof FamilyMember];
+                const count = Array.isArray(entries) ? entries.length : 0;
                 return (
                   <TabsTrigger key={key} value={key} className="text-xs gap-1.5">
                     <Icon className={cn("h-3.5 w-3.5", meta.color)} />
@@ -301,7 +288,7 @@ export default function FamilyHub() {
               const Icon = meta.icon;
               return (
                 <TabsContent key={key} value={key} className="mt-3">
-                  {/* Input Row */}
+                  {/* Input Row (CREATE) */}
                   <div className="flex gap-2 mb-3">
                     <div className="relative flex-1">
                       <Icon className={cn("absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4", meta.color)} />
@@ -318,7 +305,7 @@ export default function FamilyHub() {
                     </Button>
                   </div>
 
-                  {/* Entries List */}
+                  {/* Entries List (READ + DELETE) */}
                   {entries.length === 0 ? (
                     <p className="text-sm text-muted-foreground text-center py-6">No {meta.label.toLowerCase()} recorded yet. Add one above.</p>
                   ) : (
@@ -328,11 +315,14 @@ export default function FamilyHub() {
                           <div className="min-w-0 flex-1">
                             <p className="text-sm">{entry.text}</p>
                             <p className="text-[10px] text-muted-foreground mt-0.5">
-                              Added by <span className="font-medium">{entry.addedBy}</span> · {entry.addedAt}
+                              Added by <span className="font-medium">{entry.added_by}</span> · {entry.created_at}
+                              <span className="text-muted-foreground/50 ml-1">· ID: {entry.id}</span>
                             </p>
                           </div>
-                          <button onClick={() => removeEntry(member.id, key, entry.id)}
-                            className="text-muted-foreground hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity text-xs">✕</button>
+                          <button onClick={() => { deleteEntry(entry.id); toast.info("Deleted from database"); }}
+                            className="text-muted-foreground hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
                         </div>
                       ))}
                     </div>

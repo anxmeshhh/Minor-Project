@@ -55,17 +55,25 @@ def _conn():
 
 
 def _create_tables():
-    """Create tables if they don't exist (idempotent)."""
+    """Create all tables if they don't exist (idempotent).
+    Covers all 11 modules: Users, Family, Patient Profile, Medications,
+    Checkups, Documents, Prescriptions, Sensor Data, ML Results, AI Results,
+    Doctor Requests, Notifications.
+    """
     ddl = """
+    -- ═══════════════════ MODULE 1: USERS ═══════════════════
     CREATE TABLE IF NOT EXISTS patients (
         id INT AUTO_INCREMENT PRIMARY KEY,
         name VARCHAR(100) DEFAULT 'Demo Patient',
         age INT DEFAULT 25,
         `condition` VARCHAR(200) DEFAULT 'Monitoring',
+        role ENUM('patient','family','doctor','admin') DEFAULT 'patient',
+        email VARCHAR(200),
         doctor_id INT DEFAULT 1,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
+    -- ═══════════════════ MODULE 1b: SENSOR DATA ═══════════════════
     CREATE TABLE IF NOT EXISTS telemetry_readings (
         id INT AUTO_INCREMENT PRIMARY KEY,
         patient_id INT NOT NULL DEFAULT 1,
@@ -89,6 +97,7 @@ def _create_tables():
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
+    -- ═══════════════════ MODULE 1c: AI INSIGHTS (LEGACY) ═══════════════════
     CREATE TABLE IF NOT EXISTS ai_insights (
         id INT AUTO_INCREMENT PRIMARY KEY,
         patient_id INT DEFAULT 1,
@@ -102,6 +111,7 @@ def _create_tables():
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
+    -- ═══════════════════ MODULE 2: FAMILY HUB ═══════════════════
     CREATE TABLE IF NOT EXISTS family_groups (
         id INT AUTO_INCREMENT PRIMARY KEY,
         name VARCHAR(100) NOT NULL,
@@ -120,6 +130,7 @@ def _create_tables():
         FOREIGN KEY (group_id) REFERENCES family_groups(id) ON DELETE CASCADE
     );
 
+    -- ═══════════════════ MODULE 3: HEALTH ENTRIES (UNIFIED CRUD) ═══════════════════
     CREATE TABLE IF NOT EXISTS health_entries (
         id INT AUTO_INCREMENT PRIMARY KEY,
         member_id INT NOT NULL,
@@ -130,6 +141,75 @@ def _create_tables():
         FOREIGN KEY (member_id) REFERENCES family_members(id) ON DELETE CASCADE
     );
 
+    -- ═══════════════════ MODULE 4: PATIENT PROFILE ═══════════════════
+    CREATE TABLE IF NOT EXISTS patient_profiles (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        member_id INT NOT NULL,
+        age INT,
+        gender VARCHAR(20),
+        blood_group VARCHAR(10),
+        height_cm FLOAT,
+        weight_kg FLOAT,
+        allergies TEXT,
+        emergency_contact VARCHAR(100),
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (member_id) REFERENCES family_members(id) ON DELETE CASCADE
+    );
+
+    -- ═══════════════════ MODULE 5: CHECKUPS ═══════════════════
+    CREATE TABLE IF NOT EXISTS checkups (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        member_id INT NOT NULL,
+        title VARCHAR(200) NOT NULL,
+        date DATE NOT NULL,
+        report_notes TEXT,
+        status ENUM('upcoming','done','cancelled') DEFAULT 'upcoming',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (member_id) REFERENCES family_members(id) ON DELETE CASCADE
+    );
+
+    -- ═══════════════════ MODULE 6: DOCUMENTS ═══════════════════
+    CREATE TABLE IF NOT EXISTS documents (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        member_id INT NOT NULL,
+        file_name VARCHAR(200) NOT NULL,
+        file_type VARCHAR(50) DEFAULT 'pdf',
+        file_path VARCHAR(500),
+        description TEXT,
+        uploaded_by VARCHAR(100) DEFAULT 'Self',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (member_id) REFERENCES family_members(id) ON DELETE CASCADE
+    );
+
+    -- ═══════════════════ MODULE 7: ML RESULTS (SEPARATE) ═══════════════════
+    CREATE TABLE IF NOT EXISTS ml_results (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        member_id INT NOT NULL,
+        prediction VARCHAR(100) NOT NULL,
+        confidence FLOAT NOT NULL,
+        risk_score INT,
+        input_summary TEXT,
+        model_version VARCHAR(50) DEFAULT 'rf_v1',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (member_id) REFERENCES family_members(id) ON DELETE CASCADE
+    );
+
+    -- ═══════════════════ MODULE 8: AI RESULTS (SEPARATE) ═══════════════════
+    CREATE TABLE IF NOT EXISTS ai_results (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        member_id INT NOT NULL,
+        advice TEXT NOT NULL,
+        urgency ENUM('safe','visit','emergency') DEFAULT 'safe',
+        timeline TEXT,
+        doctor_suggestion VARCHAR(200),
+        ml_result_id INT,
+        input_sources TEXT,
+        model VARCHAR(50) DEFAULT 'llama3-70b-8192',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (member_id) REFERENCES family_members(id) ON DELETE CASCADE
+    );
+
+    -- ═══════════════════ MODULE 9: DOCTOR REQUESTS ═══════════════════
     CREATE TABLE IF NOT EXISTS doctor_requests (
         id INT AUTO_INCREMENT PRIMARY KEY,
         member_id INT NOT NULL,
@@ -149,6 +229,7 @@ def _create_tables():
         FOREIGN KEY (member_id) REFERENCES family_members(id) ON DELETE CASCADE
     );
 
+    -- ═══════════════════ MODULE 10: NOTIFICATIONS ═══════════════════
     CREATE TABLE IF NOT EXISTS notifications (
         id INT AUTO_INCREMENT PRIMARY KEY,
         group_id INT,
@@ -160,13 +241,15 @@ def _create_tables():
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
-    -- Ensure at least one demo patient exists
-    INSERT IGNORE INTO patients (id, name, age, `condition`) VALUES (1, 'Riya Sharma', 64, 'Cardiac Monitoring');
+    -- ═══════════════════ SEED DATA ═══════════════════
+    -- Demo patient
+    INSERT IGNORE INTO patients (id, name, age, `condition`, role) VALUES (1, 'Riya Sharma', 64, 'Cardiac Monitoring', 'patient');
+    INSERT IGNORE INTO patients (id, name, age, `condition`, role) VALUES (2, 'Dr. Mehra', 45, 'Cardiologist', 'doctor');
 
-    -- Seed the demo family group
+    -- Family group
     INSERT IGNORE INTO family_groups (id, name, created_by) VALUES (1, 'The Sharma Family', 1);
 
-    -- Seed family members
+    -- Family members
     INSERT IGNORE INTO family_members (id, group_id, patient_id, name, relation, role) VALUES
         (1, 1, 1, 'Riya Sharma', 'self', 'admin'),
         (2, 1, NULL, 'Priya Sharma', 'spouse', 'member'),
@@ -179,7 +262,11 @@ def _create_tables():
     c.commit()
     cur.close()
     c.close()
-    print("[DB] All tables verified (patients, telemetry, alerts, ai_insights, family_groups, family_members, health_entries, doctor_requests, notifications)")
+
+    # Seed health entries, checkups, profile, and initial ML/AI results if empty
+    _seed_data()
+    print("[DB] All 15 tables verified (patients, telemetry, alerts, ai_insights, family_groups, family_members, "
+          "health_entries, patient_profiles, checkups, documents, ml_results, ai_results, doctor_requests, notifications + alerts)")
 
 
 # ── write helpers ─────────────────────────────────────────────────────────────
@@ -273,3 +360,209 @@ def list_patients() -> list[dict]:
     rows = cur.fetchall()
     cur.close(); c.close()
     return rows
+
+
+# ── ML + AI result helpers (Module 7 & 8) ─────────────────────────────────────
+def save_ml_result(member_id: int, prediction: str, confidence: float,
+                   risk_score: int = 0, input_summary: str = "") -> int:
+    c = _conn()
+    cur = c.cursor()
+    cur.execute(
+        """INSERT INTO ml_results (member_id, prediction, confidence, risk_score, input_summary)
+           VALUES (%s,%s,%s,%s,%s)""",
+        (member_id, prediction, confidence, risk_score, input_summary),
+    )
+    c.commit()
+    rid = cur.lastrowid
+    cur.close(); c.close()
+    return rid
+
+
+def save_ai_result(member_id: int, advice: str, urgency: str = "safe",
+                   timeline: str = "", doctor_suggestion: str = "",
+                   ml_result_id: int = None, input_sources: str = "") -> int:
+    c = _conn()
+    cur = c.cursor()
+    cur.execute(
+        """INSERT INTO ai_results (member_id, advice, urgency, timeline, doctor_suggestion,
+           ml_result_id, input_sources)
+           VALUES (%s,%s,%s,%s,%s,%s,%s)""",
+        (member_id, advice, urgency, timeline, doctor_suggestion, ml_result_id, input_sources),
+    )
+    c.commit()
+    rid = cur.lastrowid
+    cur.close(); c.close()
+    return rid
+
+
+def get_ml_results(member_id: int, limit: int = 10) -> list[dict]:
+    c = _conn()
+    cur = c.cursor(dictionary=True)
+    cur.execute("SELECT * FROM ml_results WHERE member_id=%s ORDER BY id DESC LIMIT %s", (member_id, limit))
+    rows = cur.fetchall()
+    cur.close(); c.close()
+    for r in rows:
+        if r.get("created_at"): r["created_at"] = str(r["created_at"])
+    return rows
+
+
+def get_ai_results(member_id: int, limit: int = 10) -> list[dict]:
+    c = _conn()
+    cur = c.cursor(dictionary=True)
+    cur.execute("SELECT * FROM ai_results WHERE member_id=%s ORDER BY id DESC LIMIT %s", (member_id, limit))
+    rows = cur.fetchall()
+    cur.close(); c.close()
+    for r in rows:
+        if r.get("created_at"): r["created_at"] = str(r["created_at"])
+    return rows
+
+
+# ── Checkup helpers ───────────────────────────────────────────────────────────
+def get_checkups(member_id: int) -> list[dict]:
+    c = _conn()
+    cur = c.cursor(dictionary=True)
+    cur.execute("SELECT * FROM checkups WHERE member_id=%s ORDER BY date DESC", (member_id,))
+    rows = cur.fetchall()
+    cur.close(); c.close()
+    for r in rows:
+        if r.get("date"): r["date"] = str(r["date"])
+        if r.get("created_at"): r["created_at"] = str(r["created_at"])
+    return rows
+
+
+def add_checkup(member_id: int, title: str, date: str, notes: str = "", status: str = "upcoming") -> int:
+    c = _conn()
+    cur = c.cursor()
+    cur.execute("INSERT INTO checkups (member_id, title, date, report_notes, status) VALUES (%s,%s,%s,%s,%s)",
+                (member_id, title, date, notes, status))
+    c.commit()
+    cid = cur.lastrowid
+    cur.close(); c.close()
+    return cid
+
+
+def delete_checkup(checkup_id: int):
+    c = _conn()
+    cur = c.cursor()
+    cur.execute("DELETE FROM checkups WHERE id=%s", (checkup_id,))
+    c.commit()
+    cur.close(); c.close()
+
+
+# ── Patient profile helpers ───────────────────────────────────────────────────
+def get_profile(member_id: int) -> dict | None:
+    c = _conn()
+    cur = c.cursor(dictionary=True)
+    cur.execute("SELECT * FROM patient_profiles WHERE member_id=%s", (member_id,))
+    row = cur.fetchone()
+    cur.close(); c.close()
+    if row and row.get("updated_at"):
+        row["updated_at"] = str(row["updated_at"])
+    return row
+
+
+def upsert_profile(member_id: int, data: dict):
+    c = _conn()
+    cur = c.cursor()
+    existing = get_profile(member_id)
+    if existing:
+        cur.execute(
+            """UPDATE patient_profiles SET age=%s, gender=%s, blood_group=%s,
+               height_cm=%s, weight_kg=%s, allergies=%s, emergency_contact=%s
+               WHERE member_id=%s""",
+            (data.get("age"), data.get("gender"), data.get("blood_group"),
+             data.get("height_cm"), data.get("weight_kg"), data.get("allergies"),
+             data.get("emergency_contact"), member_id)
+        )
+    else:
+        cur.execute(
+            """INSERT INTO patient_profiles (member_id, age, gender, blood_group,
+               height_cm, weight_kg, allergies, emergency_contact)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
+            (member_id, data.get("age"), data.get("gender"), data.get("blood_group"),
+             data.get("height_cm"), data.get("weight_kg"), data.get("allergies"),
+             data.get("emergency_contact"))
+        )
+    c.commit()
+    cur.close(); c.close()
+
+
+# ── Seed demo data (only if empty) ───────────────────────────────────────────
+def _seed_data():
+    c = _conn()
+    cur = c.cursor()
+    cur.execute("SELECT COUNT(*) FROM health_entries")
+    count = cur.fetchone()[0]
+    if count > 0:
+        cur.close(); c.close()
+        return  # Already seeded
+
+    seeds = [
+        # Symptoms
+        (1, "symptoms", "Mild chest tightness after walking", "Self"),
+        (1, "symptoms", "Slight dizziness on standing", "Self"),
+        # Medications
+        (1, "medications", "Metoprolol 50mg — 1 tablet, 8:00 AM", "Dr. Mehra"),
+        (1, "medications", "Aspirin 75mg — 1 tablet, 1:00 PM", "Dr. Mehra"),
+        (1, "medications", "Atorvastatin 20mg — 1 tablet, 9:00 PM", "Dr. Mehra"),
+        (1, "medications", "Vitamin D3 60K — weekly", "Self"),
+        # Medical history
+        (1, "medical_history", "Hypertension (diagnosed 2022)", "Dr. Mehra"),
+        (1, "medical_history", "Type-2 Diabetes (managed with diet)", "Dr. Gupta"),
+        (1, "medical_history", "Previous MI (2024) — stent placed", "Dr. Mehra"),
+        # Prescriptions
+        (1, "prescriptions", "Metoprolol 50mg — morning, empty stomach", "Dr. Mehra"),
+        (1, "prescriptions", "Aspirin 75mg — after lunch", "Dr. Mehra"),
+        (1, "prescriptions", "Atorvastatin 20mg — bedtime", "Dr. Mehra"),
+        # Doctor notes
+        (1, "doctor_notes", "BP 140/90 — advised salt reduction and daily walking", "Dr. Mehra"),
+        (1, "doctor_notes", "Lipid panel elevated — started Atorvastatin 20mg", "Dr. Mehra"),
+        (1, "doctor_notes", "Post-MI follow-up: stable, continue current regimen", "Dr. Mehra"),
+    ]
+    for member_id, cat, text, by in seeds:
+        cur.execute("INSERT INTO health_entries (member_id, category, text, added_by) VALUES (%s,%s,%s,%s)",
+                    (member_id, cat, text, by))
+
+    # Seed patient profile
+    cur.execute("""INSERT IGNORE INTO patient_profiles
+        (member_id, age, gender, blood_group, height_cm, weight_kg, allergies, emergency_contact)
+        VALUES (1, 64, 'Female', 'B+', 162, 68, 'Penicillin', 'Priya Sharma: +91-9876543210')""")
+
+    # Seed checkups
+    cur.execute("INSERT INTO checkups (member_id, title, date, status) VALUES (1, 'Cardiology Follow-up', '2026-05-05', 'upcoming')")
+    cur.execute("INSERT INTO checkups (member_id, title, date, status) VALUES (1, 'Blood Work (CBC + Lipid)', '2026-05-12', 'upcoming')")
+    cur.execute("INSERT INTO checkups (member_id, title, date, report_notes, status) VALUES (1, 'ECG Stress Test', '2026-04-20', 'Normal sinus rhythm', 'done')")
+
+    # Seed an initial ML result
+    cur.execute("""INSERT INTO ml_results (member_id, prediction, confidence, risk_score, input_summary)
+        VALUES (1, 'normal_sinus', 0.87, 22, 'HR=72, SpO2=97, Temp=36.8, GForce=1.0')""")
+
+    # Seed an initial AI result
+    cur.execute("""INSERT INTO ai_results (member_id, advice, urgency, timeline, doctor_suggestion, ml_result_id, input_sources)
+        VALUES (1, 'Vitals are within normal range. Continue prescribed medications. Next checkup in 2 weeks.',
+                'safe', '2 weeks follow-up', 'General Physician', 1,
+                'vitals, medications, medical_history, symptoms, family_health')""")
+
+    # Seed doctor request
+    cur.execute("""INSERT INTO doctor_requests
+        (member_id, member_name, status, ai_summary, ai_urgency, ml_class, risk_score, doctor_specialty,
+         doctor_name, doctor_notes, prescription, responded_at)
+        VALUES (1, 'Riya Sharma', 'accepted',
+                'Patient stable post-MI. ML: normal_sinus (87%). Current medications adequate.',
+                'safe', 'normal_sinus', 22, 'Cardiologist',
+                'Dr. Mehra', 'Continue current regimen. ECG follow-up in 2 weeks.',
+                'Metoprolol 50mg — morning\\nAspirin 75mg — afternoon', NOW())""")
+
+    # Seed notifications
+    notifs = [
+        (1, 1, "ai_scan", "AI Health Scan Complete", "Your health scan shows all vitals normal. Risk score: 22/100."),
+        (1, 1, "member_update", "Family Hub Updated", "Priya added an observation about your morning routine."),
+        (1, 1, "doctor_response", "Dr. Mehra Responded", "Continue current regimen. ECG follow-up in 2 weeks."),
+    ]
+    for gid, mid, ntype, title, msg in notifs:
+        cur.execute("INSERT INTO notifications (group_id, member_id, type, title, message) VALUES (%s,%s,%s,%s,%s)",
+                    (gid, mid, ntype, title, msg))
+
+    c.commit()
+    cur.close(); c.close()
+    print("[DB] Seeded demo data: 15 health entries, 1 profile, 3 checkups, 1 ML result, 1 AI result, 1 doctor request, 3 notifications")

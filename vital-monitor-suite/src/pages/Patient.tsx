@@ -21,9 +21,6 @@ async function api<T>(url:string, opts?:RequestInit):Promise<T|null>{
   try{ const r=await fetch(url,opts); if(!r.ok)return null; return await r.json()as T; }catch{return null;}
 }
 
-interface Reminder { id: string; label: string; time: string; taken: boolean; dose: string; }
-interface Checkup { id: string; title: string; date: string; status: "upcoming"|"done"; }
-
 const Patient = () => {
   const { latest, history } = useVitalsCtx();
   const reasons = latest ? getAlertReasons(latest) : [];
@@ -46,27 +43,8 @@ const Patient = () => {
   const [aiUrgency, setAiUrgency] = useState<"safe"|"visit"|"emergency">("safe");
   const [aiLoading, setAiLoading] = useState(false);
 
-  // Medication reminders
-  const [reminders, setReminders] = useState<Reminder[]>([
-    { id: "1", label: "Metoprolol 50mg", time: "8:00 AM", taken: false, dose: "1 tablet" },
-    { id: "2", label: "Aspirin 75mg",    time: "1:00 PM", taken: false, dose: "1 tablet" },
-    { id: "3", label: "Atorvastatin 20mg", time: "9:00 PM", taken: false, dose: "1 tablet" },
-    { id: "4", label: "Vitamin D3",      time: "9:00 AM", taken: true,  dose: "1 capsule" },
-  ]);
-
-  // Upcoming checkups
-  const [checkups] = useState<Checkup[]>([
-    { id: "1", title: "Cardiology Follow-up", date: "May 5, 2026", status: "upcoming" },
-    { id: "2", title: "Blood Work (CBC + Lipid)", date: "May 12, 2026", status: "upcoming" },
-    { id: "3", title: "ECG Stress Test", date: "Apr 20, 2026", status: "done" },
-  ]);
-
-  // Symptom log
+  // Symptom log input
   const [symptom, setSymptom] = useState("");
-  const [symptoms, setSymptoms] = useState<{id:string;text:string;at:string}[]>([
-    { id: "pre1", text: "Mild chest tightness after walking", at: "10:30 AM" },
-    { id: "pre2", text: "Slight dizziness on standing", at: "Yesterday" },
-  ]);
 
   // Dialog states
   const [sosOpen, setSosOpen] = useState(false);
@@ -74,9 +52,9 @@ const Patient = () => {
   const [anomalyOpen, setAnomalyOpen] = useState(false);
 
   // Medical profile from shared HealthDataContext (same data as Family Hub)
-  const { getSelf, getAllForAi, family } = useHealthData();
+  const { getSelf, getAllForAi, family, addEntry } = useHealthData();
   const selfData = getSelf();
-  const aiInput = getAllForAi("self");
+  const aiInput = getAllForAi(selfData.id);
 
   // Sync Glove — calls backend to link with ESP32 hardware
   const syncGlove = useCallback(async () => {
@@ -109,7 +87,7 @@ const Patient = () => {
         patient_id: 1,
         medications: aiInput.medications,
         symptoms: aiInput.symptoms,
-        checkups: checkups.filter(c => c.status === "upcoming").map(c => c.title),
+        checkups: selfData.checkups.filter(c => c.status === "upcoming").map(c => c.title),
         medical_history: aiInput.medicalHistory,
         prescriptions: aiInput.prescriptions,
         family_health: aiInput.familyHealth,
@@ -141,10 +119,10 @@ const Patient = () => {
     }, 2000);
   };
 
-  const submitSymptom = (e: React.FormEvent) => {
+  const submitSymptom = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!symptom.trim()) return;
-    setSymptoms(s => [{ id: crypto.randomUUID(), text: symptom.trim(), at: new Date().toLocaleTimeString() }, ...s]);
+    if (!symptom.trim() || !selfData.id) return;
+    await addEntry(selfData.id, "symptoms", symptom.trim(), "Self");
     setSymptom("");
   };
 
@@ -366,12 +344,12 @@ const Patient = () => {
             <div className="rounded-lg border border-border/60 bg-panel p-3">
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">Doctor Notes ({selfData.doctorNotes.length})</p>
               {selfData.doctorNotes.slice(0,2).map(d => (
-                <div key={d.id} className="mt-1"><p className="text-[10px] text-muted-foreground">{d.addedBy} · {d.addedAt}</p><p className="text-xs">{d.text}</p></div>
+                <div key={d.id} className="mt-1"><p className="text-[10px] text-muted-foreground">{d.added_by} · {d.created_at}</p><p className="text-xs">{d.text}</p></div>
               ))}
             </div>
             <div className="rounded-lg border border-border/60 bg-panel p-3">
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">Family Members ({family.members.length})</p>
-              {family.members.filter(m => m.id !== "self").map(m => (
+              {family.members.filter(m => m.relation !== "self").map(m => (
                 <p key={m.id} className="text-xs mt-1">👤 {m.name} <span className="text-muted-foreground capitalize">({m.relation})</span></p>
               ))}
             </div>
@@ -385,19 +363,19 @@ const Patient = () => {
             <div className="flex items-center gap-2 mb-4">
               <Pill className="h-4 w-4 text-primary" /><h2 className="font-semibold">Medications</h2>
             </div>
-            <ul className="space-y-2">
-              {reminders.map(r => (
-                <li key={r.id} className="flex items-center justify-between rounded-lg bg-panel-elevated px-3 py-2.5 border border-border/60">
+            <ul className="space-y-2 max-h-40 overflow-auto">
+              {selfData.medications.map(m => (
+                <li key={m.id} className="flex items-center justify-between rounded-lg bg-panel-elevated px-3 py-2.5 border border-border/60">
                   <div>
-                    <p className={cn("text-sm font-medium", r.taken && "line-through text-muted-foreground")}>{r.label}</p>
-                    <p className="text-xs text-muted-foreground">{r.time} · {r.dose}</p>
+                    <p className="text-sm font-medium">{m.text.split("—")[0]?.trim() || m.text}</p>
+                    <p className="text-xs text-muted-foreground">{m.text.split("—")[1]?.trim() || "As prescribed"} · {m.added_by}</p>
                   </div>
-                  <Button size="sm" variant={r.taken?"secondary":"default"} disabled={r.taken}
-                    onClick={() => setReminders(rs => rs.map(x => x.id===r.id ? {...x,taken:true} : x))}>
-                    {r.taken ? "Done ✓" : "Take"}
+                  <Button size="sm" variant="default" onClick={() => {}}>
+                    Take
                   </Button>
                 </li>
               ))}
+              {selfData.medications.length === 0 && <p className="text-sm text-muted-foreground py-2 text-center">No medications logged.</p>}
             </ul>
           </div>
 
@@ -406,8 +384,8 @@ const Patient = () => {
             <div className="flex items-center gap-2 mb-4">
               <Calendar className="h-4 w-4 text-primary" /><h2 className="font-semibold">Checkups & Dates</h2>
             </div>
-            <ul className="space-y-2">
-              {checkups.map(c => (
+            <ul className="space-y-2 max-h-40 overflow-auto">
+              {selfData.checkups.map(c => (
                 <li key={c.id} className={cn("flex items-center gap-3 rounded-lg px-3 py-2.5 border",
                   c.status==="done"?"bg-emerald-900/10 border-emerald-700/30":"bg-panel-elevated border-border/60")}>
                   {c.status==="done" ? <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0"/> : <Clock className="h-4 w-4 text-amber-400 shrink-0"/>}
@@ -417,6 +395,7 @@ const Patient = () => {
                   </div>
                 </li>
               ))}
+              {selfData.checkups.length === 0 && <p className="text-sm text-muted-foreground py-2 text-center">No checkups scheduled.</p>}
             </ul>
           </div>
 
@@ -430,12 +409,13 @@ const Patient = () => {
               <Button type="submit" size="sm">Add</Button>
             </form>
             <ul className="space-y-1.5 max-h-40 overflow-auto">
-              {symptoms.map(s => (
+              {selfData.symptoms.map(s => (
                 <li key={s.id} className="flex items-start justify-between gap-2 rounded-lg bg-panel-elevated px-3 py-2 border border-border/60">
                   <span className="text-xs">{s.text}</span>
-                  <span className="text-[10px] text-muted-foreground font-mono-tabular shrink-0">{s.at}</span>
+                  <span className="text-[10px] text-muted-foreground font-mono-tabular shrink-0">{s.created_at}</span>
                 </li>
               ))}
+              {selfData.symptoms.length === 0 && <p className="text-sm text-muted-foreground py-2 text-center">No symptoms recorded.</p>}
             </ul>
           </div>
         </section>
@@ -444,19 +424,15 @@ const Patient = () => {
         <section className="rounded-xl border border-border bg-panel p-5 shadow-card">
           <div className="flex items-center gap-2 mb-4">
             <Users className="h-4 w-4 text-primary" /><h2 className="font-semibold">Connected Family Members</h2>
-            <span className="text-xs text-muted-foreground ml-auto">Viewing your activity in real-time</span>
+            <span className="text-xs text-muted-foreground ml-auto">From {family.name} · DB synced</span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {[
-              { name: "Priya Sharma (Spouse)", status: "online", lastSeen: "Now" },
-              { name: "Raj Sharma (Son)", status: "online", lastSeen: "Now" },
-              { name: "Dr. Mehra (Primary)", status: "offline", lastSeen: "2h ago" },
-            ].map(m => (
-              <div key={m.name} className="flex items-center gap-3 rounded-lg bg-panel-elevated px-4 py-3 border border-border/60">
-                <div className={cn("h-2.5 w-2.5 rounded-full", m.status==="online"?"bg-emerald-400 animate-pulse":"bg-zinc-500")} />
+            {family.members.filter(m => m.relation !== "self").map(m => (
+              <div key={m.id} className="flex items-center gap-3 rounded-lg bg-panel-elevated px-4 py-3 border border-border/60">
+                <div className="h-2.5 w-2.5 rounded-full bg-emerald-400 animate-pulse" />
                 <div>
-                  <p className="text-sm font-medium">{m.name}</p>
-                  <p className="text-[11px] text-muted-foreground">{m.lastSeen}</p>
+                  <p className="text-sm font-medium">{m.name} <span className="text-muted-foreground capitalize">({m.relation})</span></p>
+                  <p className="text-[11px] text-muted-foreground">Online · ID: {m.id}</p>
                 </div>
               </div>
             ))}

@@ -24,6 +24,7 @@ from api.ai_routes  import bp as ai_bp
 from api.patients   import bp as patients_bp
 from api.ml_routes  import bp as ml_bp
 from api.emergency  import bp as emergency_bp
+from api.crud       import bp as crud_bp
 
 app.register_blueprint(telemetry_bp)
 app.register_blueprint(vitals_bp)
@@ -32,6 +33,7 @@ app.register_blueprint(ai_bp)
 app.register_blueprint(patients_bp)
 app.register_blueprint(ml_bp)
 app.register_blueprint(emergency_bp)
+app.register_blueprint(crud_bp)
 
 # ── Health check ──────────────────────────────────────────────────────────────
 @app.route("/health")

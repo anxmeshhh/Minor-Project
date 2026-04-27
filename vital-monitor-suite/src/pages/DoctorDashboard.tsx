@@ -14,9 +14,9 @@ import { toast } from "sonner";
 
 /* ─── Mock vitals for doctor's patient view ─── */
 const MOCK_VITALS: Record<string, { hr: number; spo2: number; temp: number; history: number[]; risk: string }> = {
-  "self":   { hr: 135, spo2: 92, temp: 37.1, history: [80,85,95,110,125,130,135], risk: "Critical" },
-  "spouse": { hr: 72, spo2: 98, temp: 36.8, history: [70,71,72,73,72,71,72], risk: "Low" },
-  "son":    { hr: 88, spo2: 96, temp: 36.9, history: [80,82,85,86,87,88,88], risk: "Low" },
+  "1": { hr: 135, spo2: 92, temp: 37.1, history: [80,85,95,110,125,130,135], risk: "Critical" },
+  "2": { hr: 72, spo2: 98, temp: 36.8, history: [70,71,72,73,72,71,72], risk: "Low" },
+  "3": { hr: 88, spo2: 96, temp: 36.9, history: [80,82,85,86,87,88,88], risk: "Low" },
 };
 
 const urgBadge: Record<string, string> = {
@@ -26,9 +26,9 @@ const urgBadge: Record<string, string> = {
 };
 
 export default function DoctorDashboard() {
-  const { doctorRequests, family, getAllForAi, getMember, respondToRequest } = useHealthData();
+  const { doctorRequests, family, getAllForAi, getMember, respondToRequest, loading } = useHealthData();
   const [tab, setTab] = useState<"pending" | "accepted" | "all">("pending");
-  const [expandedReq, setExpandedReq] = useState<string | null>(null);
+  const [expandedReq, setExpandedReq] = useState<number | null>(null);
   const [search, setSearch] = useState("");
   const navigate = useNavigate();
 
@@ -40,25 +40,26 @@ export default function DoctorDashboard() {
   const filtered = doctorRequests.filter(r => {
     if (tab === "pending" && r.status !== "pending") return false;
     if (tab === "accepted" && r.status !== "accepted") return false;
-    if (search && !r.memberName.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search && !r.member_name.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
-  const handleAcceptAndRespond = (req: DoctorRequest) => {
+  const handleAcceptAndRespond = async (req: DoctorRequest) => {
     if (!noteInput.trim()) { toast.error("Please add clinical notes before accepting"); return; }
-    respondToRequest(req.id, {
+    await respondToRequest(req.id, {
       doctorName: "Dr. Mehra",
       notes: noteInput.trim(),
       prescription: prescInput.trim() || undefined,
       urgentAppointment: apptInput.trim() || undefined,
     });
-    toast.success(`Response sent to ${req.memberName} and their family`);
+    toast.success(`Response sent to ${req.member_name} and their family`);
     setNoteInput(""); setPrescInput(""); setApptInput("");
     setExpandedReq(null);
   };
 
   const pendingCount = doctorRequests.filter(r => r.status === "pending").length;
-  const acceptedCount = doctorRequests.filter(r => r.status === "accepted").length;
+
+  if (loading) return <div className="container py-20 text-center text-muted-foreground">Loading patient requests...</div>;
 
   return (
     <main className="min-h-[calc(100vh-3.5rem)] bg-background">
@@ -94,9 +95,8 @@ export default function DoctorDashboard() {
           )}
 
           {filtered.map(req => {
-            const member = getMember(req.memberId);
-            const vitals = MOCK_VITALS[req.memberId] || MOCK_VITALS["self"];
-            const aiData = member ? getAllForAi(req.memberId) : null;
+            const member = getMember(req.member_id);
+            const vitals = MOCK_VITALS[String(req.member_id)] || MOCK_VITALS["1"];
             const isExpanded = expandedReq === req.id;
 
             return (
@@ -107,23 +107,23 @@ export default function DoctorDashboard() {
                   onClick={() => setExpandedReq(isExpanded ? null : req.id)}>
                   <div className="flex items-center gap-4">
                     <div className="grid h-12 w-12 place-items-center rounded-full bg-primary/15 text-primary text-lg font-bold shrink-0">
-                      {req.memberName.charAt(0)}
+                      {req.member_name.charAt(0)}
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <h3 className="font-semibold">{req.memberName}</h3>
+                        <h3 className="font-semibold">{req.member_name}</h3>
                         <Badge variant={req.status === "pending" ? "secondary" : "default"}
                           className={req.status === "pending" ? "bg-amber-900/20 text-amber-400 border-amber-700/40" : ""}>
                           {req.status}
                         </Badge>
-                        {req.aiScan && (
-                          <span className={cn("text-xs px-2 py-0.5 rounded-full border", urgBadge[req.aiScan.urgency] || urgBadge.safe)}>
-                            {req.aiScan.urgency.toUpperCase()}
+                        {req.ai_urgency && (
+                          <span className={cn("text-xs px-2 py-0.5 rounded-full border", urgBadge[req.ai_urgency] || urgBadge.safe)}>
+                            {req.ai_urgency.toUpperCase()}
                           </span>
                         )}
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        Requested: {req.createdAt}
+                        Requested: {req.created_at}
                         {member && ` · ${member.symptoms.length} symptoms · ${member.medications.length} meds · ${member.medicalHistory.length} history`}
                       </p>
                     </div>
@@ -141,9 +141,9 @@ export default function DoctorDashboard() {
                         stroke={vitals.risk === "Critical" ? "hsl(var(--critical))" : "hsl(var(--primary))"}
                         fill={vitals.risk === "Critical" ? "hsl(var(--critical) / 0.2)" : "hsl(var(--primary) / 0.2)"} />
                     </div>
-                    {req.aiScan?.mlClass && (
+                    {req.ml_class && (
                       <span className="text-xs px-2 py-0.5 rounded-full border border-violet-700/40 bg-violet-900/20 text-violet-300 flex items-center gap-1">
-                        <Brain className="h-3 w-3" />{req.aiScan.mlClass.replace("_"," ")}
+                        <Brain className="h-3 w-3" />{req.ml_class.replace("_"," ")}
                       </span>
                     )}
                   </div>
@@ -196,7 +196,7 @@ export default function DoctorDashboard() {
                           <div className="rounded-lg border border-border/60 bg-panel p-3">
                             <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Risk Assessment</p>
                             <Badge variant={vitals.risk === "Critical" ? "destructive" : "secondary"} className="text-sm">{vitals.risk}</Badge>
-                            {req.aiScan && <p className="text-xs mt-1">Score: {req.aiScan.riskScore}/100</p>}
+                            {req.risk_score && <p className="text-xs mt-1">Score: {req.risk_score}/100</p>}
                           </div>
                         </div>
                       </TabsContent>
@@ -207,7 +207,7 @@ export default function DoctorDashboard() {
                           {member?.symptoms.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">No symptoms reported</p>}
                           {member?.symptoms.map(s => (
                             <div key={s.id} className="flex justify-between items-start rounded-lg bg-panel-elevated px-3 py-2.5 border border-border/60">
-                              <div><p className="text-sm">{s.text}</p><p className="text-[10px] text-muted-foreground">Added by {s.addedBy} · {s.addedAt}</p></div>
+                              <div><p className="text-sm">{s.text}</p><p className="text-[10px] text-muted-foreground">Added by {s.added_by} · {s.created_at}</p></div>
                             </div>
                           ))}
                         </div>
@@ -219,13 +219,13 @@ export default function DoctorDashboard() {
                           {member?.medications.map(m => (
                             <div key={m.id} className="flex items-start gap-2 rounded-lg bg-panel-elevated px-3 py-2.5 border border-border/60">
                               <Pill className="h-4 w-4 text-emerald-400 mt-0.5 shrink-0" />
-                              <div><p className="text-sm">{m.text}</p><p className="text-[10px] text-muted-foreground">Prescribed by {m.addedBy} · {m.addedAt}</p></div>
+                              <div><p className="text-sm">{m.text}</p><p className="text-[10px] text-muted-foreground">Prescribed by {m.added_by} · {m.created_at}</p></div>
                             </div>
                           ))}
                           {member?.prescriptions.map(p => (
                             <div key={p.id} className="flex items-start gap-2 rounded-lg bg-amber-900/10 px-3 py-2.5 border border-amber-700/30">
                               <FileText className="h-4 w-4 text-amber-400 mt-0.5 shrink-0" />
-                              <div><p className="text-sm">{p.text}</p><p className="text-[10px] text-muted-foreground">By {p.addedBy} · {p.addedAt}</p></div>
+                              <div><p className="text-sm">{p.text}</p><p className="text-[10px] text-muted-foreground">By {p.added_by} · {p.created_at}</p></div>
                             </div>
                           ))}
                         </div>
@@ -246,7 +246,7 @@ export default function DoctorDashboard() {
                             <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Previous Doctor Notes</p>
                             {member?.doctorNotes.map(d => (
                               <div key={d.id} className="rounded-lg bg-panel-elevated px-3 py-2 border border-border/60 mt-1.5">
-                                <p className="text-[10px] text-muted-foreground">{d.addedBy} · {d.addedAt}</p>
+                                <p className="text-[10px] text-muted-foreground">{d.added_by} · {d.created_at}</p>
                                 <p className="text-sm">{d.text}</p>
                               </div>
                             ))}
@@ -258,11 +258,11 @@ export default function DoctorDashboard() {
                       <TabsContent value="family" className="mt-3">
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
                           {family.members.map(fm => (
-                            <div key={fm.id} className={cn("rounded-lg border p-3", fm.id === req.memberId ? "border-primary/40 bg-primary/5" : "border-border/60 bg-panel")}>
+                            <div key={fm.id} className={cn("rounded-lg border p-3", fm.id === req.member_id ? "border-primary/40 bg-primary/5" : "border-border/60 bg-panel")}>
                               <div className="flex items-center gap-2 mb-2">
                                 <div className="h-8 w-8 rounded-full bg-primary/15 grid place-items-center text-sm font-bold text-primary">{fm.name.charAt(0)}</div>
                                 <div>
-                                  <p className="text-sm font-medium">{fm.name} {fm.id === req.memberId && <span className="text-[10px] text-primary">(Patient)</span>}</p>
+                                  <p className="text-sm font-medium">{fm.name} {fm.id === req.member_id && <span className="text-[10px] text-primary">(Patient)</span>}</p>
                                   <p className="text-[10px] text-muted-foreground capitalize">{fm.relation}</p>
                                 </div>
                               </div>
@@ -276,27 +276,27 @@ export default function DoctorDashboard() {
 
                       {/* AI + ML Analysis */}
                       <TabsContent value="ai" className="mt-3">
-                        {req.aiScan ? (
+                        {req.ai_summary ? (
                           <div className="space-y-3">
                             <div className="grid grid-cols-3 gap-2">
                               <div className="rounded-lg bg-violet-900/20 border border-violet-700/30 p-3">
                                 <p className="text-[10px] text-violet-300">ML Classification</p>
-                                <p className="text-sm text-violet-100 capitalize font-medium">{req.aiScan.mlClass.replace("_"," ")}</p>
+                                <p className="text-sm text-violet-100 capitalize font-medium">{req.ml_class?.replace("_"," ")}</p>
                               </div>
                               <div className="rounded-lg bg-blue-900/20 border border-blue-700/30 p-3">
                                 <p className="text-[10px] text-blue-300">Risk Score</p>
-                                <p className="text-sm text-blue-100 font-medium">{req.aiScan.riskScore}/100</p>
+                                <p className="text-sm text-blue-100 font-medium">{req.risk_score}/100</p>
                               </div>
-                              {req.aiScan.specialty && (
+                              {req.doctor_specialty && (
                                 <div className="rounded-lg bg-amber-900/20 border border-amber-700/30 p-3">
                                   <p className="text-[10px] text-amber-300">Specialist Needed</p>
-                                  <p className="text-sm text-amber-100 font-medium">{req.aiScan.specialty}</p>
+                                  <p className="text-sm text-amber-100 font-medium">{req.doctor_specialty}</p>
                                 </div>
                               )}
                             </div>
                             <div className="rounded-lg border border-blue-700/20 bg-blue-950/20 p-3">
                               <p className="text-xs text-blue-300 font-medium mb-1">AI Summary</p>
-                              <p className="text-sm text-blue-100/80 whitespace-pre-line">{req.aiScan.summary}</p>
+                              <p className="text-sm text-blue-100/80 whitespace-pre-line">{req.ai_summary}</p>
                             </div>
                           </div>
                         ) : (
@@ -347,15 +347,15 @@ export default function DoctorDashboard() {
                     )}
 
                     {/* Already Responded */}
-                    {req.status === "accepted" && req.doctorNotes && (
+                    {req.status === "accepted" && req.doctor_notes && (
                       <div className="border-t border-emerald-700/30 p-4 bg-emerald-950/10">
                         <h4 className="text-sm font-semibold mb-2 text-emerald-400 flex items-center gap-2">
-                          <CheckCircle2 className="h-4 w-4" />Your Response — sent to {req.memberName}
+                          <CheckCircle2 className="h-4 w-4" />Your Response — sent to {req.member_name}
                         </h4>
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 text-sm">
                           <div>
                             <p className="text-[10px] text-muted-foreground uppercase mb-1">Clinical Notes</p>
-                            <p className="text-emerald-100/80">{req.doctorNotes}</p>
+                            <p className="text-emerald-100/80">{req.doctor_notes}</p>
                           </div>
                           {req.prescription && (
                             <div>
@@ -363,14 +363,14 @@ export default function DoctorDashboard() {
                               <p className="text-emerald-100/80 whitespace-pre-line">{req.prescription}</p>
                             </div>
                           )}
-                          {req.urgentAppointment && (
+                          {req.urgent_appointment && (
                             <div>
                               <p className="text-[10px] text-muted-foreground uppercase mb-1">Urgent Appointment</p>
-                              <p className="text-emerald-100/80">{req.urgentAppointment}</p>
+                              <p className="text-emerald-100/80">{req.urgent_appointment}</p>
                             </div>
                           )}
                         </div>
-                        <p className="text-[10px] text-emerald-400/60 mt-2">Responded at {req.respondedAt} by {req.doctorName}</p>
+                        <p className="text-[10px] text-emerald-400/60 mt-2">Responded at {req.responded_at} by {req.doctor_name}</p>
                       </div>
                     )}
                   </div>

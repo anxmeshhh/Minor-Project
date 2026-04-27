@@ -235,11 +235,34 @@ Keep response under 200 words. Be direct, factual, and considerate of the full p
         "ts": int(time.time() * 1000),
     }
 
-    # Save insight
+    # ═══ Save results to SEPARATE tables (ML ≠ AI) ═══
     try:
+        # Module 7: ML result → ml_results table
+        ml_rid = db.save_ml_result(
+            member_id=1,
+            prediction=ml_class,
+            confidence=ml_confidence,
+            risk_score=risk,
+            input_summary=f"HR={vitals.get('hr')}, SpO2={vitals.get('spo2')}, Temp={vitals.get('temp')}, GForce={vitals.get('gforce')}"
+        )
+        result["ml_result_db_id"] = ml_rid
+
+        # Module 8: AI result → ai_results table
+        ai_rid = db.save_ai_result(
+            member_id=1,
+            advice=ai_text,
+            urgency=urgency,
+            timeline="Immediate" if urgency == "emergency" else "24-48h" if urgency == "visit" else "2 weeks",
+            doctor_suggestion=doctor_map.get(ml_class, ""),
+            ml_result_id=ml_rid,
+            input_sources="vitals,medications,symptoms,medical_history,prescriptions,family_health,doctor_notes"
+        )
+        result["ai_result_db_id"] = ai_rid
+
+        # Legacy ai_insights table
         db.save_insight(patient_id, f"[{urgency.upper()}] {ai_text}")
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[AI] Failed to save results to DB: {e}")
 
     return jsonify(result)
 
