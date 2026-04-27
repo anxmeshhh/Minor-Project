@@ -13,19 +13,38 @@ _pool: pooling.MySQLConnectionPool | None = None
 
 def init():
     global _pool
-    cfg = {
-        "host":     os.getenv("MYSQL_HOST", "localhost"),
-        "port":     int(os.getenv("MYSQL_PORT", 3306)),
-        "user":     os.getenv("MYSQL_USER", "root"),
-        "password": os.getenv("MYSQL_PASSWORD", ""),
-        "database": os.getenv("MYSQL_DB", "vitalglove"),
-    }
+    host     = os.getenv("MYSQL_HOST", "localhost")
+    port     = int(os.getenv("MYSQL_PORT", 3306))
+    user     = os.getenv("MYSQL_USER", "root")
+    password = os.getenv("MYSQL_PASSWORD", "")
+    dbname   = os.getenv("MYSQL_DB", "vitalglove")
+
+    # ── Step 1: Create the database if it doesn't exist ──────────────────────
     try:
-        _pool = pooling.MySQLConnectionPool(pool_name="vg", pool_size=5, **cfg)
-        print(f"[DB] Connected to MySQL at {cfg['host']}:{cfg['port']}/{cfg['database']}")
+        tmp = mysql.connector.connect(host=host, port=port, user=user, password=password)
+        cur = tmp.cursor()
+        cur.execute(
+            f"CREATE DATABASE IF NOT EXISTS `{dbname}` "
+            "CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+        )
+        tmp.commit()
+        cur.close(); tmp.close()
+        print(f"[DB] Database '{dbname}' is ready")
+    except Exception as e:
+        print(f"[DB] WARNING: Could not create database – running without persistence. {e}")
+        _pool = None
+        return
+
+    # ── Step 2: Connect the pool to the database ──────────────────────────────
+    try:
+        _pool = pooling.MySQLConnectionPool(
+            pool_name="vg", pool_size=5,
+            host=host, port=port, user=user, password=password, database=dbname,
+        )
+        print(f"[DB] Connected pool → {host}:{port}/{dbname}")
         _create_tables()
     except Exception as e:
-        print(f"[DB] WARNING: Could not connect to MySQL – running without persistence. {e}")
+        print(f"[DB] WARNING: Pool creation failed – running without persistence. {e}")
         _pool = None
 
 
