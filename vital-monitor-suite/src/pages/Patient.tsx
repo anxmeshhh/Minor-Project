@@ -72,9 +72,24 @@ const Patient = () => {
   const [checkupRunning, setCheckupRunning] = useState(false);
   const [anomalyOpen, setAnomalyOpen] = useState(false);
 
-  // Sync Glove animation
-  const syncGlove = useCallback(() => {
+  // Medical profile (feeds into AI analysis)
+  const medicalHistory = ["Hypertension (diagnosed 2022)", "Type-2 Diabetes (managed)", "Previous MI (2024)"];
+  const prescriptions = reminders.map(m => `${m.label} — ${m.dose} at ${m.time}`);
+  const familyHealth = [
+    { name: "Priya Sharma (Spouse)", condition: "Healthy, regular checkups" },
+    { name: "Raj Sharma (Son)", condition: "Asthma (childhood, managed)" },
+    { name: "Late Shri Sharma (Father)", condition: "Cardiac arrest at age 68" },
+  ];
+  const doctorNotes = [
+    { date: "Apr 15, 2026", note: "BP 140/90 — advised lifestyle modification, reduce salt intake" },
+    { date: "Mar 28, 2026", note: "Lipid panel elevated — started Atorvastatin 20mg" },
+  ];
+
+  // Sync Glove — calls backend to link with ESP32 hardware
+  const syncGlove = useCallback(async () => {
     setGloveSync("syncing");
+    // Call backend to sync with glove hardware
+    const cmd = await api<{scenario:string;label:string}>(`${BASE}/api/glove/command`);
     setTimeout(() => {
       setGloveSync("synced");
       setGloveSyncTime(new Date().toLocaleTimeString());
@@ -92,6 +107,7 @@ const Patient = () => {
   const [contextUsed, setContextUsed] = useState<Record<string,boolean>>({});
 
   // AI urgency analysis (full pipeline: Vitals + Meds + History + ML + Groq)
+  const [riskScore, setRiskScore] = useState(0);
   const analyzeUrgency = useCallback(async () => {
     setAiLoading(true);
     const r = await api<any>(`${BASE}/api/ai/analyze`, {
@@ -101,10 +117,10 @@ const Patient = () => {
         medications: reminders.filter(m => !m.taken).map(m => m.label),
         symptoms: symptoms.map(s => s.text),
         checkups: checkups.filter(c => c.status === "upcoming").map(c => c.title),
-        medical_history: ["Hypertension (diagnosed 2022)", "Type-2 Diabetes (managed)", "Previous MI (2024)"],
-        prescriptions: reminders.map(m => `${m.label} - ${m.dose} at ${m.time}`),
-        family_health: ["Spouse (Priya): Healthy", "Son (Raj): Asthma history", "Father: Cardiac arrest at 68"],
-        doctor_notes: ["Last visit: BP 140/90, advised lifestyle changes", "Cardiologist follow-up in May 2026"],
+        medical_history: medicalHistory,
+        prescriptions: prescriptions,
+        family_health: familyHealth.map(f => `${f.name}: ${f.condition}`),
+        doctor_notes: doctorNotes.map(d => `[${d.date}] ${d.note}`),
       })
     });
     if (r) {
@@ -114,13 +130,14 @@ const Patient = () => {
       setMlConf(r.ml_confidence || 0);
       setDoctorSpec(r.doctor_specialty || null);
       setContextUsed(r.context_used || {});
+      setRiskScore(r.risk_score || 0);
     } else {
       if (risk > 70) { setAiInsight("CRITICAL: Immediate medical attention required."); setAiUrgency("emergency"); }
       else if (risk > 40) { setAiInsight("CAUTION: Schedule a doctor visit within 24-48 hours."); setAiUrgency("visit"); }
       else { setAiInsight("All vitals within normal parameters. Continue monitoring."); setAiUrgency("safe"); }
     }
     setAiLoading(false);
-  }, [risk, reminders, symptoms, checkups]);
+  }, [risk, reminders, symptoms, checkups, medicalHistory, prescriptions, familyHealth, doctorNotes]);
 
   const runGloveCheckup = () => {
     setCheckupRunning(true);
@@ -229,7 +246,7 @@ const Patient = () => {
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-blue-400" />
-              <h2 className="font-semibold text-sm">AI + ML Health Assessment</h2>
+              <h2 className="font-semibold text-sm">AI + ML Holistic Health Assessment</h2>
               <span className="text-[10px] text-muted-foreground">(RandomForest + Groq LLaMA3-70B)</span>
             </div>
             <div className="flex items-center gap-2">
@@ -240,53 +257,134 @@ const Patient = () => {
               </Button>
             </div>
           </div>
+
+          {/* What data goes into AI — always visible */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-4">
+            <div className="rounded-lg border border-border/40 bg-panel-elevated p-2.5">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Glove Vitals</p>
+              <p className="text-xs mt-1">HR {latest?.hr ?? "—"} · SpO₂ {latest?.spo2 ?? "—"}%</p>
+              <p className="text-xs">Temp {latest?.temp.toFixed(1) ?? "—"}°C · G {latest?.gforce.toFixed(1) ?? "—"}</p>
+            </div>
+            <div className="rounded-lg border border-border/40 bg-panel-elevated p-2.5">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Medications ({reminders.filter(m=>!m.taken).length} active)</p>
+              {reminders.filter(m=>!m.taken).slice(0,2).map(m=>(<p key={m.id} className="text-xs mt-0.5">{m.label}</p>))}
+              {reminders.filter(m=>!m.taken).length > 2 && <p className="text-[10px] text-muted-foreground">+{reminders.filter(m=>!m.taken).length-2} more</p>}
+            </div>
+            <div className="rounded-lg border border-border/40 bg-panel-elevated p-2.5">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Medical History</p>
+              {medicalHistory.slice(0,2).map((h,i)=>(<p key={i} className="text-xs mt-0.5">{h.split("(")[0].trim()}</p>))}
+            </div>
+            <div className="rounded-lg border border-border/40 bg-panel-elevated p-2.5">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Symptoms ({symptoms.length})</p>
+              {symptoms.slice(0,2).map(s=>(<p key={s.id} className="text-xs mt-0.5 truncate">{s.text}</p>))}
+              {symptoms.length === 0 && <p className="text-xs mt-0.5 text-muted-foreground">None reported</p>}
+            </div>
+          </div>
+
           {aiInsight ? (
             <div className="space-y-3">
-              {/* ML Prediction Row */}
-              {mlClass && (
-                <div className="flex items-center gap-3 p-3 rounded-lg bg-violet-900/20 border border-violet-700/30">
-                  <Brain className="h-4 w-4 text-violet-400 shrink-0"/>
-                  <div className="flex-1">
-                    <p className="text-xs text-violet-300 font-medium">ML Classification</p>
-                    <p className="text-sm text-violet-100 capitalize">{mlClass.replace("_"," ")} <span className="text-xs text-violet-300">({(mlConf*100).toFixed(1)}% confidence)</span></p>
+              {/* ML + Risk Summary Row */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {mlClass && (
+                  <div className="flex items-center gap-2 p-3 rounded-lg bg-violet-900/20 border border-violet-700/30">
+                    <Brain className="h-4 w-4 text-violet-400 shrink-0"/>
+                    <div>
+                      <p className="text-[10px] text-violet-300">ML Classification</p>
+                      <p className="text-sm text-violet-100 capitalize font-medium">{mlClass.replace("_"," ")} <span className="text-xs font-normal">({(mlConf*100).toFixed(1)}%)</span></p>
+                    </div>
                   </div>
-                  {doctorSpec && (
-                    <span className="text-[10px] px-2 py-1 rounded-full border border-amber-700/40 bg-amber-900/20 text-amber-300">
-                      Suggested: {doctorSpec}
-                    </span>
-                  )}
+                )}
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-blue-900/20 border border-blue-700/30">
+                  <Shield className="h-4 w-4 text-blue-400 shrink-0"/>
+                  <div>
+                    <p className="text-[10px] text-blue-300">Risk Score</p>
+                    <p className="text-sm text-blue-100 font-medium">{riskScore}/100 <span className="text-xs font-normal capitalize">({riskScore > 70 ? "Critical" : riskScore > 40 ? "Caution" : "Safe"})</span></p>
+                  </div>
                 </div>
-              )}
-              {/* Groq AI Analysis */}
-              <p className="text-sm text-blue-100/80 leading-relaxed whitespace-pre-line">{aiInsight}</p>
+                {doctorSpec && (
+                  <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-900/20 border border-amber-700/30">
+                    <ClipboardList className="h-4 w-4 text-amber-400 shrink-0"/>
+                    <div>
+                      <p className="text-[10px] text-amber-300">Recommended Specialist</p>
+                      <p className="text-sm text-amber-100 font-medium">{doctorSpec}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* AI Recommendations */}
+              <div className="rounded-lg border border-blue-700/20 bg-blue-950/20 p-4">
+                <p className="text-xs text-blue-300 font-medium mb-2 flex items-center gap-1"><Sparkles className="h-3 w-3"/>Groq AI Analysis (based on all 8 data sources)</p>
+                <p className="text-sm text-blue-100/90 leading-relaxed whitespace-pre-line">{aiInsight}</p>
+              </div>
+
               {/* Action buttons */}
               <div className="flex gap-2 flex-wrap">
                 {aiUrgency==="visit"&&(
-                  <Button size="sm" onClick={()=>navigate("/discovery")} className="mt-1">
-                    <Shield className="h-3.5 w-3.5 mr-1.5"/>Find {doctorSpec||"Doctor"} (AI Recommended)
+                  <Button size="sm" onClick={()=>navigate("/discovery")} className="gap-1.5">
+                    <Shield className="h-3.5 w-3.5"/>Find {doctorSpec||"Doctor"} (AI Recommended)
                   </Button>
                 )}
                 {aiUrgency==="emergency"&&(
-                  <Button size="sm" variant="destructive" onClick={()=>setSosOpen(true)} className="mt-1 animate-pulse">
-                    <PhoneCall className="h-3.5 w-3.5 mr-1.5"/>Call Emergency 108
+                  <Button size="sm" variant="destructive" onClick={()=>setSosOpen(true)} className="gap-1.5 animate-pulse">
+                    <PhoneCall className="h-3.5 w-3.5"/>Call Emergency 108
                   </Button>
                 )}
               </div>
+
               {/* Data Sources Used */}
               {Object.keys(contextUsed).length > 0 && (
-                <div className="flex flex-wrap gap-1.5 pt-2 border-t border-blue-800/30 mt-3">
-                  <span className="text-[10px] text-blue-400/60 mr-1">Sources:</span>
+                <div className="flex flex-wrap gap-1.5 pt-2 border-t border-blue-800/30 mt-2">
+                  <span className="text-[10px] text-blue-400/60 mr-1">Data analyzed:</span>
                   {Object.entries(contextUsed).filter(([,v])=>v).map(([k])=>(
-                    <span key={k} className="text-[10px] px-1.5 py-0.5 rounded bg-blue-900/30 border border-blue-700/30 text-blue-300/80 capitalize">
-                      {k.replace("_"," ")}
-                    </span>
+                    <span key={k} className="text-[10px] px-1.5 py-0.5 rounded bg-blue-900/30 border border-blue-700/30 text-blue-300/80 capitalize">✓ {k.replace("_"," ")}</span>
                   ))}
                 </div>
               )}
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">Click "Analyze Now" to run the full holistic health assessment. The AI analyzes your <strong>glove vitals + medications + symptoms + medical history + prescriptions + family health + doctor notes</strong> together — not just sensor data.</p>
+            <div className="text-center py-4">
+              <Brain className="h-8 w-8 text-blue-400/40 mx-auto mb-2"/>
+              <p className="text-sm text-muted-foreground">Click <strong>"Analyze Now"</strong> to run the full holistic health assessment.</p>
+              <p className="text-xs text-muted-foreground mt-1">The AI will analyze all the data shown above — glove vitals, medications, medical history, symptoms, family health, and doctor notes together.</p>
+            </div>
           )}
+        </section>
+
+        {/* Medical Profile — History + Doctor Notes + Family Health */}
+        <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="rounded-xl border border-border bg-panel p-5 shadow-card">
+            <div className="flex items-center gap-2 mb-3"><ClipboardList className="h-4 w-4 text-primary"/><h2 className="font-semibold text-sm">Medical History</h2></div>
+            <ul className="space-y-2">
+              {medicalHistory.map((h,i) => (
+                <li key={i} className="flex items-start gap-2 text-xs rounded-lg bg-panel-elevated px-3 py-2 border border-border/60">
+                  <span className="h-1.5 w-1.5 rounded-full bg-primary mt-1.5 shrink-0"/>{h}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="rounded-xl border border-border bg-panel p-5 shadow-card">
+            <div className="flex items-center gap-2 mb-3"><Calendar className="h-4 w-4 text-primary"/><h2 className="font-semibold text-sm">Doctor Notes</h2></div>
+            <ul className="space-y-2">
+              {doctorNotes.map((d,i) => (
+                <li key={i} className="rounded-lg bg-panel-elevated px-3 py-2 border border-border/60">
+                  <p className="text-[10px] text-muted-foreground font-mono-tabular">{d.date}</p>
+                  <p className="text-xs mt-0.5">{d.note}</p>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="rounded-xl border border-border bg-panel p-5 shadow-card">
+            <div className="flex items-center gap-2 mb-3"><Users className="h-4 w-4 text-primary"/><h2 className="font-semibold text-sm">Family Health Risks</h2></div>
+            <ul className="space-y-2">
+              {familyHealth.map((f,i) => (
+                <li key={i} className="rounded-lg bg-panel-elevated px-3 py-2 border border-border/60">
+                  <p className="text-xs font-medium">{f.name}</p>
+                  <p className="text-[11px] text-muted-foreground">{f.condition}</p>
+                </li>
+              ))}
+            </ul>
+          </div>
         </section>
 
         {/* Meds + Checkups + Symptoms — 3 column */}

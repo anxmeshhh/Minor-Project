@@ -13,24 +13,45 @@ interface PatientReq {
   urgency: "safe"|"visit"|"emergency"; hr: number; spo2: number; temp: number;
   risk: string; status: "pending"|"accepted"|"rejected"; history: number[];
   recentAlert: string; meds: string;
+  medicalHistory: string[]; prescriptions: string[]; doctorNotes: string[]; familyHealth: string[];
 }
 
 const MOCK_FLEET: PatientReq[] = [
   { id: "PT-001", name: "Riya Sharma", age: 64, symptoms: "Chest tightness, fatigue", mlClass: "tachycardia",
     urgency: "visit", hr: 135, spo2: 92, temp: 37.1, risk: "Critical", status: "pending",
-    recentAlert: "Abnormal HR", history: [80,85,95,110,125,130,135], meds: "Metoprolol 50mg, Aspirin 75mg" },
-  { id: "PT-002", name: "Amit Patel", age: 45, symptoms: "Shortness of breath", mlClass: "hypoxia",
+    recentAlert: "Abnormal HR", history: [80,85,95,110,125,130,135], meds: "Metoprolol 50mg, Aspirin 75mg",
+    medicalHistory: ["Hypertension (2022)", "Previous MI (2024)", "Type-2 Diabetes"],
+    prescriptions: ["Metoprolol 50mg — 1 tab, 8AM", "Aspirin 75mg — 1 tab, 1PM", "Atorvastatin 20mg — 1 tab, 9PM"],
+    doctorNotes: ["Apr 15: BP 140/90, advised salt reduction", "Mar 28: Lipid panel elevated, started Atorvastatin"],
+    familyHealth: ["Father: Cardiac arrest at 68", "Spouse: Healthy"] },
+  { id: "PT-002", name: "Amit Patel", age: 45, symptoms: "Shortness of breath, wheezing", mlClass: "hypoxia",
     urgency: "emergency", hr: 88, spo2: 87, temp: 36.8, risk: "Critical", status: "pending",
-    recentAlert: "Low SpO2", history: [97,96,94,92,90,88,87], meds: "None" },
+    recentAlert: "Low SpO2", history: [97,96,94,92,90,88,87], meds: "Salbutamol inhaler",
+    medicalHistory: ["Chronic Asthma (childhood)", "Pneumonia (2023)"],
+    prescriptions: ["Salbutamol inhaler — PRN", "Montelukast 10mg — 1 tab, night"],
+    doctorNotes: ["Apr 10: SpO2 dipping on exertion, ordered PFT", "Mar 15: Chest X-ray clear"],
+    familyHealth: ["Mother: COPD", "Brother: Healthy"] },
   { id: "PT-003", name: "Naomi Singh", age: 38, symptoms: "None", mlClass: "normal",
     urgency: "safe", hr: 65, spo2: 99, temp: 36.8, risk: "Low", status: "accepted",
-    recentAlert: "None", history: [68,66,65,64,65,66,65], meds: "Vitamin D3" },
-  { id: "PT-004", name: "Rajesh Kumar", age: 41, symptoms: "Mild fever, body ache", mlClass: "fever",
+    recentAlert: "None", history: [68,66,65,64,65,66,65], meds: "Vitamin D3",
+    medicalHistory: ["No significant history"],
+    prescriptions: ["Vitamin D3 60K — weekly"],
+    doctorNotes: ["Apr 20: Routine checkup, all normal"],
+    familyHealth: ["All family members healthy"] },
+  { id: "PT-004", name: "Rajesh Kumar", age: 41, symptoms: "Mild fever, body ache, sore throat", mlClass: "fever",
     urgency: "visit", hr: 90, spo2: 95, temp: 38.2, risk: "Caution", status: "pending",
-    recentAlert: "Slight Fever", history: [75,78,82,85,88,89,90], meds: "Paracetamol 500mg" },
-  { id: "PT-005", name: "Priya Mehra", age: 55, symptoms: "Dizziness on standing", mlClass: "bradycardia",
+    recentAlert: "Slight Fever", history: [75,78,82,85,88,89,90], meds: "Paracetamol 500mg",
+    medicalHistory: ["Seasonal allergies", "Appendectomy (2019)"],
+    prescriptions: ["Paracetamol 500mg — SOS, max 4/day", "Cetirizine 10mg — 1 tab, night"],
+    doctorNotes: ["Apr 22: Viral symptoms, advised rest and fluids"],
+    familyHealth: ["Wife: Thyroid (managed)", "Son: Healthy"] },
+  { id: "PT-005", name: "Priya Mehra", age: 55, symptoms: "Dizziness on standing, blurred vision", mlClass: "bradycardia",
     urgency: "visit", hr: 42, spo2: 97, temp: 36.6, risk: "Caution", status: "accepted",
-    recentAlert: "Low HR", history: [55,52,48,45,43,42,42], meds: "Amlodipine 5mg" },
+    recentAlert: "Low HR", history: [55,52,48,45,43,42,42], meds: "Amlodipine 5mg",
+    medicalHistory: ["Hypothyroidism (2020)", "Iron deficiency anemia"],
+    prescriptions: ["Amlodipine 5mg — 1 tab, morning", "Levothyroxine 50mcg — empty stomach", "Iron supplement — after lunch"],
+    doctorNotes: ["Apr 18: HR trending low, consider pacemaker evaluation", "Apr 5: Thyroid levels stable on current dose"],
+    familyHealth: ["Mother: Hypothyroidism", "Sister: Anemia"] },
 ];
 
 const urgBadge = { safe: "bg-emerald-500/15 text-emerald-400 border-emerald-700/40",
@@ -42,6 +63,7 @@ export default function DoctorDashboard() {
   const [search, setSearch] = useState("");
   const [patients, setPatients] = useState(MOCK_FLEET);
   const [tab, setTab] = useState<"requests"|"accepted"|"all">("requests");
+  const [expandedId, setExpandedId] = useState<string|null>(null);
   const navigate = useNavigate();
 
   const filtered = patients
@@ -158,14 +180,39 @@ export default function DoctorDashboard() {
                         </Button>
                       </div>
                     ) : p.status === "accepted" ? (
-                      <Button size="sm" variant="outline" onClick={() => navigate(`/doctor/patient/${p.id}`)} className="h-7 px-2.5 text-xs">
-                        View Details
+                      <Button size="sm" variant="outline" onClick={() => setExpandedId(expandedId === p.id ? null : p.id)} className="h-7 px-2.5 text-xs">
+                        {expandedId === p.id ? "Collapse" : "View Full Profile"}
                       </Button>
                     ) : (
                       <span className="text-xs text-muted-foreground">Rejected</span>
                     )}
                   </TableCell>
                 </TableRow>
+                {/* Expandable Patient Profile */}
+                {expandedId === p.id && (
+                  <TableRow>
+                    <TableCell colSpan={10} className="bg-panel-elevated/50 p-0">
+                      <div className="p-4 grid grid-cols-2 lg:grid-cols-4 gap-3">
+                        <div className="rounded-lg border border-border/60 bg-panel p-3">
+                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">Medical History</p>
+                          {p.medicalHistory.map((h,i) => <p key={i} className="text-xs mt-1">• {h}</p>)}
+                        </div>
+                        <div className="rounded-lg border border-border/60 bg-panel p-3">
+                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">Active Prescriptions</p>
+                          {p.prescriptions.map((r,i) => <p key={i} className="text-xs mt-1">💊 {r}</p>)}
+                        </div>
+                        <div className="rounded-lg border border-border/60 bg-panel p-3">
+                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">Doctor Notes</p>
+                          {p.doctorNotes.map((n,i) => <p key={i} className="text-xs mt-1">📋 {n}</p>)}
+                        </div>
+                        <div className="rounded-lg border border-border/60 bg-panel p-3">
+                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">Family Health</p>
+                          {p.familyHealth.map((f,i) => <p key={i} className="text-xs mt-1">👨‍👩‍👧 {f}</p>)}
+                        </div>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )}
               ))}
               {filtered.length === 0 && (
                 <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">No patients found.</TableCell></TableRow>
