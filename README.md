@@ -247,6 +247,34 @@ The trainer automatically:
 3. Picks the best model
 4. Saves `model.pkl` + `model_meta.json`
 
+### How ML Is Used in the System
+
+Every vitals response from `/api/latest` is **automatically enriched** with ML predictions:
+
+```json
+{
+  "hr": 72, "spo2": 98, "temp": 36.6, "risk": 10,
+  "ml_class": "normal",
+  "ml_confidence": 0.95,
+  "ml_algorithm": "RandomForest",
+  "ml_ready": true,
+  "escalation_tier": 0,
+  "escalation_label": "No escalation - vitals normal"
+}
+```
+
+The ML model runs on every reading (< 1ms inference), classifying it into one of 9 clinical scenarios. This powers the DemoPanel live classification, Patient AI urgency assessment, and Doctor risk sorting.
+
+### Groq AI (LLaMA3-70B) Integration
+
+| Feature | Endpoint | Where Used |
+|---------|----------|------------|
+| Health Insight | `POST /api/ai/insight` | Patient & Doctor dashboards |
+| Alert Explanation | `POST /api/ai/explain` | Emergency page |
+| Urgency Detection | Combined with ML risk | Patient AI Assessment panel |
+
+The Patient dashboard "Analyze Now" button triggers Groq AI which returns urgency level (Safe / Need to Visit / Emergency) with actionable recommendations.
+
 ---
 
 ## Simulation Engine

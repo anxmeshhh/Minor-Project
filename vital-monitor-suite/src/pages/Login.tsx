@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Activity, ShieldCheck } from "lucide-react";
@@ -28,9 +28,11 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  if (user) {
-    navigate(roleLanding[user.role], { replace: true });
-  }
+  useEffect(() => {
+    if (user) {
+      navigate(roleLanding[user.role], { replace: true });
+    }
+  }, [user, navigate]);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();

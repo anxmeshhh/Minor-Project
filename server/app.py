@@ -46,4 +46,4 @@ def on_connect():
 if __name__ == "__main__":
     print(f"[VitalGlove] Starting Flask on port {config.FLASK_PORT}")
     db.init()
-    socketio.run(app, host="0.0.0.0", port=config.FLASK_PORT, debug=True, use_reloader=False)
+    socketio.run(app, host="0.0.0.0", port=config.FLASK_PORT, debug=True, use_reloader=False, allow_unsafe_werkzeug=True)

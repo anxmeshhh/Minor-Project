@@ -31,7 +31,7 @@ def init():
         cur.close(); tmp.close()
         print(f"[DB] Database '{dbname}' is ready")
     except Exception as e:
-        print(f"[DB] WARNING: Could not create database – running without persistence. {e}")
+        print(f"[DB] WARNING: Could not create database - running without persistence. {e}")
         _pool = None
         return
 
@@ -41,10 +41,10 @@ def init():
             pool_name="vg", pool_size=5,
             host=host, port=port, user=user, password=password, database=dbname,
         )
-        print(f"[DB] Connected pool → {host}:{port}/{dbname}")
+        print(f"[DB] Connected pool -> {host}:{port}/{dbname}")
         _create_tables()
     except Exception as e:
-        print(f"[DB] WARNING: Pool creation failed – running without persistence. {e}")
+        print(f"[DB] WARNING: Pool creation failed - running without persistence. {e}")
         _pool = None
 
 
