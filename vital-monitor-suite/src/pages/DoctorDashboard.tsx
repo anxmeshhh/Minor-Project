@@ -116,7 +116,7 @@ export default function DoctorDashboard() {
               {filtered.map(p => (
                 <TableRow key={p.id} className={cn("transition-colors",
                   p.status==="pending"?"bg-amber-950/5":"",
-                  p.status==="rejected"?"opacity-40")}>
+                  p.status==="rejected"?"opacity-40":"")}>
                   <TableCell className="font-mono text-xs">{p.id}</TableCell>
                   <TableCell>
                     <p className="font-medium text-sm">{p.name}</p>
