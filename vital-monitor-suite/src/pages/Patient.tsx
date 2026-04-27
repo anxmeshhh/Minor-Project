@@ -85,34 +85,44 @@ const Patient = () => {
   // Auto-sync on mount
   useEffect(() => { syncGlove(); }, [syncGlove]);
 
-  // AI urgency analysis
+  // State for full analysis result
+  const [mlClass, setMlClass] = useState<string|null>(null);
+  const [mlConf, setMlConf] = useState(0);
+  const [doctorSpec, setDoctorSpec] = useState<string|null>(null);
+
+  // AI urgency analysis (full pipeline: ML + Rules + Groq)
   const analyzeUrgency = useCallback(async () => {
     setAiLoading(true);
-    const r = await api<{insight:string}>(`${BASE}/api/ai/insight`, {
+    const r = await api<any>(`${BASE}/api/ai/analyze`, {
       method: "POST", headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ patient_id: 1 })
+      body: JSON.stringify({
+        patient_id: 1,
+        medications: reminders.filter(m => !m.taken).map(m => m.label),
+        symptoms: symptoms.map(s => s.text),
+        checkups: checkups.filter(c => c.status === "upcoming").map(c => c.title),
+      })
     });
-    if (r?.insight) {
-      setAiInsight(r.insight);
-      // Determine urgency from risk
-      if (risk > 70) setAiUrgency("emergency");
-      else if (risk > 40) setAiUrgency("visit");
-      else setAiUrgency("safe");
+    if (r) {
+      setAiInsight(r.ai_analysis || null);
+      setAiUrgency(r.urgency || "safe");
+      setMlClass(r.ml_class || null);
+      setMlConf(r.ml_confidence || 0);
+      setDoctorSpec(r.doctor_specialty || null);
     } else {
-      // Fallback when Groq is unavailable
+      // Fallback when backend is unavailable
       if (risk > 70) {
-        setAiInsight("CRITICAL: Immediate medical attention required. Vitals indicate acute distress. Contact emergency services.");
+        setAiInsight("CRITICAL: Immediate medical attention required.");
         setAiUrgency("emergency");
       } else if (risk > 40) {
-        setAiInsight("CAUTION: Some vitals are outside normal range. Schedule a doctor visit within 24-48 hours for evaluation.");
+        setAiInsight("CAUTION: Schedule a doctor visit within 24-48 hours.");
         setAiUrgency("visit");
       } else {
-        setAiInsight("All vitals within normal parameters. Continue regular monitoring. Next scheduled checkup recommended.");
+        setAiInsight("All vitals within normal parameters. Continue monitoring.");
         setAiUrgency("safe");
       }
     }
     setAiLoading(false);
-  }, [risk]);
+  }, [risk, reminders, symptoms, checkups]);
 
   const runGloveCheckup = () => {
     setCheckupRunning(true);
@@ -216,13 +226,13 @@ const Patient = () => {
           </div>
         </section>
 
-        {/* AI Urgency Analysis */}
+        {/* AI + ML Combined Analysis */}
         <section className="rounded-xl border border-blue-700/30 bg-blue-950/10 p-5 shadow-card">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-blue-400" />
-              <h2 className="font-semibold text-sm">AI Health Assessment</h2>
-              <span className="text-[10px] text-muted-foreground">(Groq LLaMA3-70B)</span>
+              <h2 className="font-semibold text-sm">AI + ML Health Assessment</h2>
+              <span className="text-[10px] text-muted-foreground">(RandomForest + Groq LLaMA3-70B)</span>
             </div>
             <div className="flex items-center gap-2">
               {aiInsight&&<span className={cn("text-xs px-2.5 py-1 rounded-full border font-medium",urgencyBadge[aiUrgency].c)}>{urgencyBadge[aiUrgency].l}</span>}
@@ -233,21 +243,40 @@ const Patient = () => {
             </div>
           </div>
           {aiInsight ? (
-            <div className="space-y-2">
+            <div className="space-y-3">
+              {/* ML Prediction Row */}
+              {mlClass && (
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-violet-900/20 border border-violet-700/30">
+                  <Brain className="h-4 w-4 text-violet-400 shrink-0"/>
+                  <div className="flex-1">
+                    <p className="text-xs text-violet-300 font-medium">ML Classification</p>
+                    <p className="text-sm text-violet-100 capitalize">{mlClass.replace("_"," ")} <span className="text-xs text-violet-300">({(mlConf*100).toFixed(1)}% confidence)</span></p>
+                  </div>
+                  {doctorSpec && (
+                    <span className="text-[10px] px-2 py-1 rounded-full border border-amber-700/40 bg-amber-900/20 text-amber-300">
+                      Suggested: {doctorSpec}
+                    </span>
+                  )}
+                </div>
+              )}
+              {/* Groq AI Analysis */}
               <p className="text-sm text-blue-100/80 leading-relaxed whitespace-pre-line">{aiInsight}</p>
-              {aiUrgency==="visit"&&(
-                <Button size="sm" onClick={()=>navigate("/discovery")} className="mt-2">
-                  <Shield className="h-3.5 w-3.5 mr-1.5"/>Find Doctor (AI Recommended)
-                </Button>
-              )}
-              {aiUrgency==="emergency"&&(
-                <Button size="sm" variant="destructive" onClick={()=>setSosOpen(true)} className="mt-2 animate-pulse">
-                  <PhoneCall className="h-3.5 w-3.5 mr-1.5"/>Call Emergency 108
-                </Button>
-              )}
+              {/* Action buttons */}
+              <div className="flex gap-2 flex-wrap">
+                {aiUrgency==="visit"&&(
+                  <Button size="sm" onClick={()=>navigate("/discovery")} className="mt-1">
+                    <Shield className="h-3.5 w-3.5 mr-1.5"/>Find {doctorSpec||"Doctor"} (AI Recommended)
+                  </Button>
+                )}
+                {aiUrgency==="emergency"&&(
+                  <Button size="sm" variant="destructive" onClick={()=>setSosOpen(true)} className="mt-1 animate-pulse">
+                    <PhoneCall className="h-3.5 w-3.5 mr-1.5"/>Call Emergency 108
+                  </Button>
+                )}
+              </div>
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">Click "Analyze Now" to get an AI health assessment based on your current vitals, medications, and symptoms.</p>
+            <p className="text-sm text-muted-foreground">Click "Analyze Now" to run the full ML + AI pipeline. The system will classify your vitals using RandomForest, compute risk score, and generate Groq AI recommendations based on your medications, symptoms, and checkup history.</p>
           )}
         </section>
 
