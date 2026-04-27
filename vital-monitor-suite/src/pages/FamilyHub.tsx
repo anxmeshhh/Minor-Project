@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import {
   Users, Plus, Brain, Sparkles, Shield, Pill, ClipboardList, FileText,
-  Heart, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Send, Pencil
+  Heart, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Send, Pencil, Bell, Calendar, Clock
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -25,14 +25,14 @@ const CATEGORY_META: Record<string, { icon: any; label: string; color: string; p
 };
 
 export default function FamilyHub() {
-  const { family, setFamilyName, addEntry, removeEntry, getAllForAi, updateAiScan, addMember } = useHealthData();
+  const { family, setFamilyName, addEntry, removeEntry, getAllForAi, updateAiScan, addMember, notifications, doctorRequests, createDoctorRequest, markRead, unreadCount } = useHealthData();
   const navigate = useNavigate();
   const [selectedMember, setSelectedMember] = useState("self");
   const [editingName, setEditingName] = useState(false);
   const [nameVal, setNameVal] = useState(family.name);
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
   const [scanLoading, setScanLoading] = useState<string | null>(null);
-  const [expandedCat, setExpandedCat] = useState<string | null>("symptoms");
+  const [showNotifications, setShowNotifications] = useState(false);
 
   // Add new member
   const [showAddMember, setShowAddMember] = useState(false);
@@ -111,12 +111,69 @@ export default function FamilyHub() {
               {family.name} <Pencil className="inline h-4 w-4 text-muted-foreground ml-1" />
             </h1>
           )}
-          <p className="text-sm text-muted-foreground mt-1">Central health hub — all family data feeds into AI analysis</p>
+          <p className="text-sm text-muted-foreground mt-1">Central health hub — all family data feeds into AI + ML pipeline</p>
         </div>
-        <Button variant="outline" onClick={() => setShowAddMember(!showAddMember)}>
-          <Plus className="h-4 w-4 mr-1.5" />Add Member
-        </Button>
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Button variant="outline" size="sm" onClick={() => setShowNotifications(!showNotifications)} className="relative">
+              <Bell className="h-4 w-4" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-critical text-[9px] text-white grid place-items-center animate-pulse">{unreadCount}</span>
+              )}
+            </Button>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => setShowAddMember(!showAddMember)}>
+            <Plus className="h-4 w-4 mr-1" />Add Member
+          </Button>
+        </div>
       </header>
+
+      {/* Notifications Panel */}
+      {showNotifications && (
+        <Card className="p-4 mb-4 border-blue-700/30 bg-blue-950/10 max-h-64 overflow-auto">
+          <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
+            <Bell className="h-4 w-4 text-blue-400" />Notifications & Alerts
+          </h3>
+          {notifications.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-2">No notifications</p>
+          ) : (
+            <div className="space-y-2">
+              {notifications.slice(0, 8).map(n => (
+                <div key={n.id} onClick={() => markRead(n.id)}
+                  className={cn("rounded-lg px-3 py-2 border cursor-pointer transition-all",
+                    n.read ? "border-border/40 bg-panel opacity-60" : "border-blue-700/40 bg-blue-900/10")}>
+                  <div className="flex items-center gap-2">
+                    {n.type === "doctor_response" && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />}
+                    {n.type === "ai_scan" && <Brain className="h-3.5 w-3.5 text-violet-400 shrink-0" />}
+                    {n.type === "alert" && <AlertTriangle className="h-3.5 w-3.5 text-amber-400 shrink-0" />}
+                    {n.type === "member_update" && <Users className="h-3.5 w-3.5 text-blue-400 shrink-0" />}
+                    {n.type === "appointment" && <Calendar className="h-3.5 w-3.5 text-primary shrink-0" />}
+                    <p className="text-xs font-medium flex-1">{n.title}</p>
+                    <span className="text-[10px] text-muted-foreground shrink-0">{n.ts}</span>
+                    {!n.read && <span className="h-2 w-2 rounded-full bg-blue-400" />}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1 whitespace-pre-line">{n.message}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
+
+      {/* Doctor Requests Status */}
+      {doctorRequests.length > 0 && (
+        <div className="flex gap-2 mb-4 overflow-x-auto">
+          {doctorRequests.slice(0, 3).map(r => (
+            <Card key={r.id} className={cn("px-3 py-2 flex items-center gap-2 shrink-0 text-xs",
+              r.status === "pending" ? "border-amber-700/40" : "border-emerald-700/40")}>
+              {r.status === "pending" ? <Clock className="h-3.5 w-3.5 text-amber-400" /> : <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />}
+              <span>{r.memberName}</span>
+              <Badge variant={r.status === "pending" ? "secondary" : "default"} className="text-[9px] h-4 px-1.5">{r.status}</Badge>
+              {r.doctorName && <span className="text-muted-foreground">by {r.doctorName}</span>}
+            </Card>
+          ))}
+        </div>
+      )}
 
       {showAddMember && (
         <Card className="p-4 mb-4 flex gap-3 items-end border-primary/30">
@@ -174,12 +231,18 @@ export default function FamilyHub() {
                 </p>
               </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <Button size="sm" variant="outline" onClick={() => navigate("/discovery")} className="text-xs">
                 <Shield className="h-3.5 w-3.5 mr-1"/>Find Doctor
               </Button>
+              <Button size="sm" variant="outline" onClick={() => {
+                createDoctorRequest(member.id, member.lastAiScan || undefined);
+                toast.success(`Doctor request sent for ${member.name} with full health data`);
+              }} className="text-xs border-emerald-700/40 text-emerald-400 hover:bg-emerald-900/20">
+                <Send className="h-3.5 w-3.5 mr-1"/>Request Doctor
+              </Button>
               <Button size="sm" onClick={() => runAiScan(member.id)} disabled={scanLoading === member.id}
-                className="bg-gradient-to-r from-violet-600 to-blue-600 text-white">
+                className="bg-gradient-to-r from-violet-600 to-blue-600 text-white text-xs">
                 <Brain className="h-3.5 w-3.5 mr-1.5"/>
                 {scanLoading === member.id ? "Scanning..." : "Run AI + ML Scan"}
               </Button>

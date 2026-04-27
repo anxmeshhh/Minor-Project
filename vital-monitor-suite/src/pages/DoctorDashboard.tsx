@@ -1,225 +1,383 @@
 import { useState, Fragment } from "react";
-import { Search, HeartPulse, Filter, CheckCircle2, XCircle, Brain, Clock } from "lucide-react";
+import { Search, HeartPulse, Filter, CheckCircle2, XCircle, Brain, Clock, FileText, Pill, Users, Send, AlertTriangle, ClipboardList, Calendar } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { useNavigate } from "react-router-dom";
 import { Sparkline } from "@/components/Sparkline";
+import { Card } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { useNavigate } from "react-router-dom";
+import { useHealthData, type DoctorRequest } from "@/context/HealthDataContext";
+import { toast } from "sonner";
 
-interface PatientReq {
-  id: string; name: string; age: number; symptoms: string; mlClass: string;
-  urgency: "safe"|"visit"|"emergency"; hr: number; spo2: number; temp: number;
-  risk: string; status: "pending"|"accepted"|"rejected"; history: number[];
-  recentAlert: string; meds: string;
-  medicalHistory: string[]; prescriptions: string[]; doctorNotes: string[]; familyHealth: string[];
-}
+/* ─── Mock vitals for doctor's patient view ─── */
+const MOCK_VITALS: Record<string, { hr: number; spo2: number; temp: number; history: number[]; risk: string }> = {
+  "self":   { hr: 135, spo2: 92, temp: 37.1, history: [80,85,95,110,125,130,135], risk: "Critical" },
+  "spouse": { hr: 72, spo2: 98, temp: 36.8, history: [70,71,72,73,72,71,72], risk: "Low" },
+  "son":    { hr: 88, spo2: 96, temp: 36.9, history: [80,82,85,86,87,88,88], risk: "Low" },
+};
 
-const MOCK_FLEET: PatientReq[] = [
-  { id: "PT-001", name: "Riya Sharma", age: 64, symptoms: "Chest tightness, fatigue", mlClass: "tachycardia",
-    urgency: "visit", hr: 135, spo2: 92, temp: 37.1, risk: "Critical", status: "pending",
-    recentAlert: "Abnormal HR", history: [80,85,95,110,125,130,135], meds: "Metoprolol 50mg, Aspirin 75mg",
-    medicalHistory: ["Hypertension (2022)", "Previous MI (2024)", "Type-2 Diabetes"],
-    prescriptions: ["Metoprolol 50mg — 1 tab, 8AM", "Aspirin 75mg — 1 tab, 1PM", "Atorvastatin 20mg — 1 tab, 9PM"],
-    doctorNotes: ["Apr 15: BP 140/90, advised salt reduction", "Mar 28: Lipid panel elevated, started Atorvastatin"],
-    familyHealth: ["Father: Cardiac arrest at 68", "Spouse: Healthy"] },
-  { id: "PT-002", name: "Amit Patel", age: 45, symptoms: "Shortness of breath, wheezing", mlClass: "hypoxia",
-    urgency: "emergency", hr: 88, spo2: 87, temp: 36.8, risk: "Critical", status: "pending",
-    recentAlert: "Low SpO2", history: [97,96,94,92,90,88,87], meds: "Salbutamol inhaler",
-    medicalHistory: ["Chronic Asthma (childhood)", "Pneumonia (2023)"],
-    prescriptions: ["Salbutamol inhaler — PRN", "Montelukast 10mg — 1 tab, night"],
-    doctorNotes: ["Apr 10: SpO2 dipping on exertion, ordered PFT", "Mar 15: Chest X-ray clear"],
-    familyHealth: ["Mother: COPD", "Brother: Healthy"] },
-  { id: "PT-003", name: "Naomi Singh", age: 38, symptoms: "None", mlClass: "normal",
-    urgency: "safe", hr: 65, spo2: 99, temp: 36.8, risk: "Low", status: "accepted",
-    recentAlert: "None", history: [68,66,65,64,65,66,65], meds: "Vitamin D3",
-    medicalHistory: ["No significant history"],
-    prescriptions: ["Vitamin D3 60K — weekly"],
-    doctorNotes: ["Apr 20: Routine checkup, all normal"],
-    familyHealth: ["All family members healthy"] },
-  { id: "PT-004", name: "Rajesh Kumar", age: 41, symptoms: "Mild fever, body ache, sore throat", mlClass: "fever",
-    urgency: "visit", hr: 90, spo2: 95, temp: 38.2, risk: "Caution", status: "pending",
-    recentAlert: "Slight Fever", history: [75,78,82,85,88,89,90], meds: "Paracetamol 500mg",
-    medicalHistory: ["Seasonal allergies", "Appendectomy (2019)"],
-    prescriptions: ["Paracetamol 500mg — SOS, max 4/day", "Cetirizine 10mg — 1 tab, night"],
-    doctorNotes: ["Apr 22: Viral symptoms, advised rest and fluids"],
-    familyHealth: ["Wife: Thyroid (managed)", "Son: Healthy"] },
-  { id: "PT-005", name: "Priya Mehra", age: 55, symptoms: "Dizziness on standing, blurred vision", mlClass: "bradycardia",
-    urgency: "visit", hr: 42, spo2: 97, temp: 36.6, risk: "Caution", status: "accepted",
-    recentAlert: "Low HR", history: [55,52,48,45,43,42,42], meds: "Amlodipine 5mg",
-    medicalHistory: ["Hypothyroidism (2020)", "Iron deficiency anemia"],
-    prescriptions: ["Amlodipine 5mg — 1 tab, morning", "Levothyroxine 50mcg — empty stomach", "Iron supplement — after lunch"],
-    doctorNotes: ["Apr 18: HR trending low, consider pacemaker evaluation", "Apr 5: Thyroid levels stable on current dose"],
-    familyHealth: ["Mother: Hypothyroidism", "Sister: Anemia"] },
-];
-
-const urgBadge = { safe: "bg-emerald-500/15 text-emerald-400 border-emerald-700/40",
+const urgBadge: Record<string, string> = {
+  safe: "bg-emerald-500/15 text-emerald-400 border-emerald-700/40",
   visit: "bg-amber-500/15 text-amber-400 border-amber-700/40",
-  emergency: "bg-red-500/15 text-red-400 border-red-700/40 animate-pulse" };
-const urgLabel = { safe: "Safe", visit: "Needs Visit", emergency: "Emergency" };
+  emergency: "bg-red-500/15 text-red-400 border-red-700/40 animate-pulse",
+};
 
 export default function DoctorDashboard() {
+  const { doctorRequests, family, getAllForAi, getMember, respondToRequest } = useHealthData();
+  const [tab, setTab] = useState<"pending" | "accepted" | "all">("pending");
+  const [expandedReq, setExpandedReq] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [patients, setPatients] = useState(MOCK_FLEET);
-  const [tab, setTab] = useState<"requests"|"accepted"|"all">("requests");
-  const [expandedId, setExpandedId] = useState<string|null>(null);
   const navigate = useNavigate();
 
-  const filtered = patients
-    .filter(p => {
-      if (tab === "requests") return p.status === "pending";
-      if (tab === "accepted") return p.status === "accepted";
-      return true;
-    })
-    .filter(p => p.name.toLowerCase().includes(search.toLowerCase()) || p.id.toLowerCase().includes(search.toLowerCase()))
-    .sort((a, b) => {
-      const s = (r: string) => r === "Critical" ? 3 : r === "Caution" ? 2 : 1;
-      return s(b.risk) - s(a.risk);
+  // Doctor action form states
+  const [noteInput, setNoteInput] = useState("");
+  const [prescInput, setPrescInput] = useState("");
+  const [apptInput, setApptInput] = useState("");
+
+  const filtered = doctorRequests.filter(r => {
+    if (tab === "pending" && r.status !== "pending") return false;
+    if (tab === "accepted" && r.status !== "accepted") return false;
+    if (search && !r.memberName.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
+
+  const handleAcceptAndRespond = (req: DoctorRequest) => {
+    if (!noteInput.trim()) { toast.error("Please add clinical notes before accepting"); return; }
+    respondToRequest(req.id, {
+      doctorName: "Dr. Mehra",
+      notes: noteInput.trim(),
+      prescription: prescInput.trim() || undefined,
+      urgentAppointment: apptInput.trim() || undefined,
     });
+    toast.success(`Response sent to ${req.memberName} and their family`);
+    setNoteInput(""); setPrescInput(""); setApptInput("");
+    setExpandedReq(null);
+  };
 
-  const accept = (id: string) => setPatients(ps => ps.map(p => p.id === id ? {...p, status: "accepted"} : p));
-  const reject = (id: string) => setPatients(ps => ps.map(p => p.id === id ? {...p, status: "rejected"} : p));
-
-  const pendingCount = patients.filter(p => p.status === "pending").length;
+  const pendingCount = doctorRequests.filter(r => r.status === "pending").length;
+  const acceptedCount = doctorRequests.filter(r => r.status === "accepted").length;
 
   return (
-    <main className="theme-clinical min-h-[calc(100vh-3.5rem)] bg-background text-foreground">
+    <main className="min-h-[calc(100vh-3.5rem)] bg-background">
       <div className="container py-8 max-w-7xl">
-        <header className="mb-6 flex items-end justify-between border-b pb-4">
+        {/* Header */}
+        <header className="flex flex-wrap items-end justify-between gap-4 mb-6">
           <div>
-            <p className="text-sm font-semibold tracking-widest text-primary uppercase flex items-center gap-2">
-              <HeartPulse className="h-4 w-4" /> Clinician Dashboard
-            </p>
-            <h1 className="text-3xl font-bold mt-1">Patient Fleet</h1>
+            <p className="text-sm uppercase tracking-widest text-muted-foreground">Doctor Dashboard</p>
+            <h1 className="text-3xl font-semibold tracking-tight">Patient Cases</h1>
+            <p className="text-sm text-muted-foreground mt-1">Review patient data: User Input + Family Hub + ML + AI → your decision</p>
           </div>
-          <div className="flex gap-2">
-            <Badge variant="secondary" className="text-sm px-3 py-1.5">{patients.filter(p=>p.status==="accepted").length} Active Patients</Badge>
-            {pendingCount > 0 && <Badge variant="destructive" className="text-sm px-3 py-1.5 animate-pulse">{pendingCount} Pending Requests</Badge>}
+          <div className="flex items-center gap-3">
+            <div className="flex gap-1">
+              {(["pending", "accepted", "all"] as const).map(t => (
+                <Button key={t} size="sm" variant={tab === t ? "default" : "outline"} onClick={() => setTab(t)} className="capitalize text-xs">
+                  {t} {t === "pending" && pendingCount > 0 && <Badge variant="destructive" className="ml-1 h-4 px-1.5 text-[9px]">{pendingCount}</Badge>}
+                </Button>
+              ))}
+            </div>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input placeholder="Search patients..." className="pl-9 bg-background w-48" value={search} onChange={e => setSearch(e.target.value)} />
+            </div>
           </div>
         </header>
 
-        {/* Tabs */}
-        <div className="flex gap-2 mb-4">
-          {(["requests","accepted","all"] as const).map(t => (
-            <button key={t} onClick={() => setTab(t)}
-              className={cn("px-4 py-2 rounded-lg text-sm font-medium border transition-colors",
-                tab===t ? "bg-primary text-primary-foreground border-primary" : "bg-panel border-border hover:bg-panel-elevated")}>
-              {t === "requests" ? `Requests (${pendingCount})` : t === "accepted" ? "My Patients" : "All"}
-            </button>
-          ))}
-        </div>
+        {/* Patient Cases */}
+        <div className="space-y-4">
+          {filtered.length === 0 && (
+            <Card className="p-8 text-center text-muted-foreground">
+              <p className="text-lg">No {tab === "all" ? "" : tab} cases found.</p>
+            </Card>
+          )}
 
-        <div className="bg-panel border border-border rounded-xl shadow-sm overflow-hidden">
-          <div className="p-4 border-b bg-card/50 flex justify-between items-center">
-            <div className="relative w-80">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Search patients..." className="pl-9 bg-background" value={search} onChange={e => setSearch(e.target.value)} />
-            </div>
-            <p className="text-sm text-muted-foreground">Showing {filtered.length} patients</p>
-          </div>
+          {filtered.map(req => {
+            const member = getMember(req.memberId);
+            const vitals = MOCK_VITALS[req.memberId] || MOCK_VITALS["self"];
+            const aiData = member ? getAllForAi(req.memberId) : null;
+            const isExpanded = expandedReq === req.id;
 
-          <Table>
-            <TableHeader className="bg-muted/30">
-              <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>Patient</TableHead>
-                <TableHead>Symptoms / Meds</TableHead>
-                <TableHead className="w-[100px]">HR Trend</TableHead>
-                <TableHead className="text-right">HR</TableHead>
-                <TableHead className="text-right">SpO2</TableHead>
-                <TableHead>ML Class</TableHead>
-                <TableHead>AI Urgency</TableHead>
-                <TableHead>Risk</TableHead>
-                <TableHead className="text-right">Action</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map(p => (
-                <Fragment key={p.id}>
-                <TableRow className={cn("transition-colors",
-                  p.status==="pending"?"bg-amber-950/5":"",
-                  p.status==="rejected"?"opacity-40":"")}>
-                  <TableCell className="font-mono text-xs">{p.id}</TableCell>
-                  <TableCell>
-                    <p className="font-medium text-sm">{p.name}</p>
-                    <p className="text-xs text-muted-foreground">Age {p.age}</p>
-                  </TableCell>
-                  <TableCell>
-                    <p className="text-xs">{p.symptoms || "None"}</p>
-                    <p className="text-[10px] text-muted-foreground">{p.meds}</p>
-                  </TableCell>
-                  <TableCell>
-                    <Sparkline data={p.history} width={90} height={28}
-                      stroke={p.risk==="Critical"?"hsl(var(--critical))":p.risk==="Caution"?"hsl(var(--caution))":"hsl(var(--primary))"}
-                      fill={p.risk==="Critical"?"hsl(var(--critical) / 0.2)":p.risk==="Caution"?"hsl(var(--caution) / 0.2)":"hsl(var(--primary) / 0.2)"} />
-                  </TableCell>
-                  <TableCell className={cn("text-right font-mono text-sm", (p.hr>120||p.hr<50)&&"text-critical font-bold")}>{p.hr}</TableCell>
-                  <TableCell className={cn("text-right font-mono text-sm", p.spo2<94&&"text-critical font-bold")}>{p.spo2}%</TableCell>
-                  <TableCell>
-                    <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border border-violet-700/40 bg-violet-900/20 text-violet-300">
-                      <Brain className="h-3 w-3"/>{p.mlClass}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <span className={cn("text-xs px-2 py-0.5 rounded-full border font-medium", urgBadge[p.urgency])}>{urgLabel[p.urgency]}</span>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={p.risk==="Critical"?"destructive":p.risk==="Caution"?"secondary":"outline"}
-                      className={p.risk==="Critical"?"bg-critical text-critical-foreground animate-pulse":p.risk==="Caution"?"bg-caution text-caution-foreground":""}>
-                      {p.risk}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {p.status === "pending" ? (
-                      <div className="flex gap-1.5 justify-end">
-                        <Button size="sm" variant="default" onClick={(e) => {e.stopPropagation(); accept(p.id);}} className="h-7 px-2.5 text-xs">
-                          <CheckCircle2 className="h-3.5 w-3.5 mr-1"/>Accept
-                        </Button>
-                        <Button size="sm" variant="outline" onClick={(e) => {e.stopPropagation(); reject(p.id);}} className="h-7 px-2.5 text-xs border-red-700/40 text-red-400 hover:bg-red-900/20">
-                          <XCircle className="h-3.5 w-3.5 mr-1"/>Reject
-                        </Button>
+            return (
+              <Card key={req.id} className={cn("overflow-hidden border transition-all",
+                req.status === "pending" ? "border-amber-700/40" : "border-border/60")}>
+                {/* Case Header */}
+                <div className="flex items-center justify-between p-4 cursor-pointer hover:bg-panel-elevated/50"
+                  onClick={() => setExpandedReq(isExpanded ? null : req.id)}>
+                  <div className="flex items-center gap-4">
+                    <div className="grid h-12 w-12 place-items-center rounded-full bg-primary/15 text-primary text-lg font-bold shrink-0">
+                      {req.memberName.charAt(0)}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-semibold">{req.memberName}</h3>
+                        <Badge variant={req.status === "pending" ? "secondary" : "default"}
+                          className={req.status === "pending" ? "bg-amber-900/20 text-amber-400 border-amber-700/40" : ""}>
+                          {req.status}
+                        </Badge>
+                        {req.aiScan && (
+                          <span className={cn("text-xs px-2 py-0.5 rounded-full border", urgBadge[req.aiScan.urgency] || urgBadge.safe)}>
+                            {req.aiScan.urgency.toUpperCase()}
+                          </span>
+                        )}
                       </div>
-                    ) : p.status === "accepted" ? (
-                      <Button size="sm" variant="outline" onClick={() => setExpandedId(expandedId === p.id ? null : p.id)} className="h-7 px-2.5 text-xs">
-                        {expandedId === p.id ? "Collapse" : "View Full Profile"}
-                      </Button>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">Rejected</span>
+                      <p className="text-xs text-muted-foreground">
+                        Requested: {req.createdAt}
+                        {member && ` · ${member.symptoms.length} symptoms · ${member.medications.length} meds · ${member.medicalHistory.length} history`}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {/* Quick vitals */}
+                    <div className="hidden sm:flex items-center gap-4 text-xs">
+                      <span className={cn("font-mono", vitals.hr > 120 && "text-critical font-bold")}>
+                        ❤️ {vitals.hr} BPM
+                      </span>
+                      <span className={cn("font-mono", vitals.spo2 < 94 && "text-critical font-bold")}>
+                        🩸 {vitals.spo2}%
+                      </span>
+                      <Sparkline data={vitals.history} width={80} height={24}
+                        stroke={vitals.risk === "Critical" ? "hsl(var(--critical))" : "hsl(var(--primary))"}
+                        fill={vitals.risk === "Critical" ? "hsl(var(--critical) / 0.2)" : "hsl(var(--primary) / 0.2)"} />
+                    </div>
+                    {req.aiScan?.mlClass && (
+                      <span className="text-xs px-2 py-0.5 rounded-full border border-violet-700/40 bg-violet-900/20 text-violet-300 flex items-center gap-1">
+                        <Brain className="h-3 w-3" />{req.aiScan.mlClass.replace("_"," ")}
+                      </span>
                     )}
-                  </TableCell>
-                </TableRow>
-                {expandedId === p.id && (
-                  <TableRow>
-                    <TableCell colSpan={10} className="bg-panel-elevated/50 p-0">
-                      <div className="p-4 grid grid-cols-2 lg:grid-cols-4 gap-3">
-                        <div className="rounded-lg border border-border/60 bg-panel p-3">
-                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">Medical History</p>
-                          {p.medicalHistory.map((h,i) => <p key={i} className="text-xs mt-1">• {h}</p>)}
+                  </div>
+                </div>
+
+                {/* Expanded: Full Patient Case */}
+                {isExpanded && (
+                  <div className="border-t border-border/40">
+                    {/* Data Pipeline Indicator */}
+                    <div className="px-4 py-2 bg-blue-950/10 border-b border-blue-700/20 flex items-center gap-2 overflow-x-auto">
+                      <span className="text-[10px] text-blue-400 shrink-0">DATA PIPELINE:</span>
+                      {["User Input", "Family Hub", "Glove Data", "ML Engine", "Rule Engine", "AI Analysis"].map((step, i) => (
+                        <Fragment key={step}>
+                          {i > 0 && <span className="text-blue-600">→</span>}
+                          <span className="text-[10px] px-2 py-0.5 rounded bg-blue-900/30 border border-blue-700/30 text-blue-300 whitespace-nowrap">{step}</span>
+                        </Fragment>
+                      ))}
+                      <span className="text-blue-600">→</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-900/30 border border-emerald-700/30 text-emerald-300 font-medium whitespace-nowrap">YOUR DECISION</span>
+                    </div>
+
+                    {/* Patient Data Tabs */}
+                    <Tabs defaultValue="overview" className="p-4">
+                      <TabsList className="grid grid-cols-6 w-full">
+                        <TabsTrigger value="overview" className="text-xs">Overview</TabsTrigger>
+                        <TabsTrigger value="symptoms" className="text-xs">Symptoms</TabsTrigger>
+                        <TabsTrigger value="medications" className="text-xs">Medications</TabsTrigger>
+                        <TabsTrigger value="history" className="text-xs">History</TabsTrigger>
+                        <TabsTrigger value="family" className="text-xs">Family</TabsTrigger>
+                        <TabsTrigger value="ai" className="text-xs">AI + ML</TabsTrigger>
+                      </TabsList>
+
+                      {/* Overview */}
+                      <TabsContent value="overview" className="mt-3">
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                          <div className="rounded-lg border border-border/60 bg-panel p-3">
+                            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Vitals (Live)</p>
+                            <p className="text-sm">HR: <span className="font-mono font-bold">{vitals.hr}</span> BPM</p>
+                            <p className="text-sm">SpO₂: <span className="font-mono font-bold">{vitals.spo2}</span>%</p>
+                            <p className="text-sm">Temp: <span className="font-mono font-bold">{vitals.temp}</span>°C</p>
+                          </div>
+                          <div className="rounded-lg border border-border/60 bg-panel p-3">
+                            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Symptoms ({member?.symptoms.length})</p>
+                            {member?.symptoms.slice(0,3).map(s => <p key={s.id} className="text-xs mt-0.5">• {s.text}</p>)}
+                          </div>
+                          <div className="rounded-lg border border-border/60 bg-panel p-3">
+                            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Active Meds ({member?.medications.length})</p>
+                            {member?.medications.slice(0,3).map(m => <p key={m.id} className="text-xs mt-0.5">💊 {m.text.split("—")[0]}</p>)}
+                          </div>
+                          <div className="rounded-lg border border-border/60 bg-panel p-3">
+                            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Risk Assessment</p>
+                            <Badge variant={vitals.risk === "Critical" ? "destructive" : "secondary"} className="text-sm">{vitals.risk}</Badge>
+                            {req.aiScan && <p className="text-xs mt-1">Score: {req.aiScan.riskScore}/100</p>}
+                          </div>
                         </div>
-                        <div className="rounded-lg border border-border/60 bg-panel p-3">
-                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">Active Prescriptions</p>
-                          {p.prescriptions.map((r,i) => <p key={i} className="text-xs mt-1">💊 {r}</p>)}
+                      </TabsContent>
+
+                      {/* Symptoms */}
+                      <TabsContent value="symptoms" className="mt-3">
+                        <div className="space-y-2">
+                          {member?.symptoms.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">No symptoms reported</p>}
+                          {member?.symptoms.map(s => (
+                            <div key={s.id} className="flex justify-between items-start rounded-lg bg-panel-elevated px-3 py-2.5 border border-border/60">
+                              <div><p className="text-sm">{s.text}</p><p className="text-[10px] text-muted-foreground">Added by {s.addedBy} · {s.addedAt}</p></div>
+                            </div>
+                          ))}
                         </div>
-                        <div className="rounded-lg border border-border/60 bg-panel p-3">
-                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">Doctor Notes</p>
-                          {p.doctorNotes.map((n,i) => <p key={i} className="text-xs mt-1">📋 {n}</p>)}
+                      </TabsContent>
+
+                      {/* Medications */}
+                      <TabsContent value="medications" className="mt-3">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+                          {member?.medications.map(m => (
+                            <div key={m.id} className="flex items-start gap-2 rounded-lg bg-panel-elevated px-3 py-2.5 border border-border/60">
+                              <Pill className="h-4 w-4 text-emerald-400 mt-0.5 shrink-0" />
+                              <div><p className="text-sm">{m.text}</p><p className="text-[10px] text-muted-foreground">Prescribed by {m.addedBy} · {m.addedAt}</p></div>
+                            </div>
+                          ))}
+                          {member?.prescriptions.map(p => (
+                            <div key={p.id} className="flex items-start gap-2 rounded-lg bg-amber-900/10 px-3 py-2.5 border border-amber-700/30">
+                              <FileText className="h-4 w-4 text-amber-400 mt-0.5 shrink-0" />
+                              <div><p className="text-sm">{p.text}</p><p className="text-[10px] text-muted-foreground">By {p.addedBy} · {p.addedAt}</p></div>
+                            </div>
+                          ))}
                         </div>
-                        <div className="rounded-lg border border-border/60 bg-panel p-3">
-                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">Family Health</p>
-                          {p.familyHealth.map((f,i) => <p key={i} className="text-xs mt-1">👨‍👩‍👧 {f}</p>)}
+                      </TabsContent>
+
+                      {/* Medical History */}
+                      <TabsContent value="history" className="mt-3">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                          <div>
+                            <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Medical History</p>
+                            {member?.medicalHistory.map(h => (
+                              <div key={h.id} className="flex items-start gap-2 rounded-lg bg-panel-elevated px-3 py-2 border border-border/60 mt-1.5">
+                                <span className="h-1.5 w-1.5 rounded-full bg-blue-400 mt-2 shrink-0" /><p className="text-sm">{h.text}</p>
+                              </div>
+                            ))}
+                          </div>
+                          <div>
+                            <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Previous Doctor Notes</p>
+                            {member?.doctorNotes.map(d => (
+                              <div key={d.id} className="rounded-lg bg-panel-elevated px-3 py-2 border border-border/60 mt-1.5">
+                                <p className="text-[10px] text-muted-foreground">{d.addedBy} · {d.addedAt}</p>
+                                <p className="text-sm">{d.text}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </TabsContent>
+
+                      {/* Family Context */}
+                      <TabsContent value="family" className="mt-3">
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+                          {family.members.map(fm => (
+                            <div key={fm.id} className={cn("rounded-lg border p-3", fm.id === req.memberId ? "border-primary/40 bg-primary/5" : "border-border/60 bg-panel")}>
+                              <div className="flex items-center gap-2 mb-2">
+                                <div className="h-8 w-8 rounded-full bg-primary/15 grid place-items-center text-sm font-bold text-primary">{fm.name.charAt(0)}</div>
+                                <div>
+                                  <p className="text-sm font-medium">{fm.name} {fm.id === req.memberId && <span className="text-[10px] text-primary">(Patient)</span>}</p>
+                                  <p className="text-[10px] text-muted-foreground capitalize">{fm.relation}</p>
+                                </div>
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                History: {fm.medicalHistory.map(h => h.text).join(", ") || "None"}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </TabsContent>
+
+                      {/* AI + ML Analysis */}
+                      <TabsContent value="ai" className="mt-3">
+                        {req.aiScan ? (
+                          <div className="space-y-3">
+                            <div className="grid grid-cols-3 gap-2">
+                              <div className="rounded-lg bg-violet-900/20 border border-violet-700/30 p-3">
+                                <p className="text-[10px] text-violet-300">ML Classification</p>
+                                <p className="text-sm text-violet-100 capitalize font-medium">{req.aiScan.mlClass.replace("_"," ")}</p>
+                              </div>
+                              <div className="rounded-lg bg-blue-900/20 border border-blue-700/30 p-3">
+                                <p className="text-[10px] text-blue-300">Risk Score</p>
+                                <p className="text-sm text-blue-100 font-medium">{req.aiScan.riskScore}/100</p>
+                              </div>
+                              {req.aiScan.specialty && (
+                                <div className="rounded-lg bg-amber-900/20 border border-amber-700/30 p-3">
+                                  <p className="text-[10px] text-amber-300">Specialist Needed</p>
+                                  <p className="text-sm text-amber-100 font-medium">{req.aiScan.specialty}</p>
+                                </div>
+                              )}
+                            </div>
+                            <div className="rounded-lg border border-blue-700/20 bg-blue-950/20 p-3">
+                              <p className="text-xs text-blue-300 font-medium mb-1">AI Summary</p>
+                              <p className="text-sm text-blue-100/80 whitespace-pre-line">{req.aiScan.summary}</p>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground text-center py-4">No AI scan data available for this request.</p>
+                        )}
+                      </TabsContent>
+                    </Tabs>
+
+                    {/* Doctor Action Panel */}
+                    {req.status === "pending" && (
+                      <div className="border-t border-border/40 p-4 bg-panel-elevated/30">
+                        <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                          <ClipboardList className="h-4 w-4 text-primary" />Your Response (flows to patient + family)
+                        </h4>
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-3">
+                          <div>
+                            <label className="text-xs text-muted-foreground block mb-1">Clinical Notes *</label>
+                            <textarea value={noteInput} onChange={e => setNoteInput(e.target.value)}
+                              placeholder="e.g. Increase Metoprolol to 100mg. Schedule ECG within 48 hours."
+                              className="w-full h-24 rounded-md border border-border bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-primary" />
+                          </div>
+                          <div>
+                            <label className="text-xs text-muted-foreground block mb-1">Prescription (each line = 1 medicine)</label>
+                            <textarea value={prescInput} onChange={e => setPrescInput(e.target.value)}
+                              placeholder={"Metoprolol 100mg — morning\nAspirin 75mg — after lunch"}
+                              className="w-full h-24 rounded-md border border-border bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-primary" />
+                          </div>
+                          <div>
+                            <label className="text-xs text-muted-foreground block mb-1">Urgent Appointment (optional)</label>
+                            <Input value={apptInput} onChange={e => setApptInput(e.target.value)} placeholder="e.g. ECG Stress Test — Apr 30" />
+                            <p className="text-[10px] text-muted-foreground mt-2">
+                              ✓ Notes added to patient record<br />
+                              ✓ Prescription saved to profile<br />
+                              ✓ Patient + family notified instantly
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button onClick={() => handleAcceptAndRespond(req)} className="gap-1.5">
+                            <CheckCircle2 className="h-4 w-4" />Accept & Send Response
+                          </Button>
+                          <Button variant="outline" className="gap-1.5 border-red-700/40 text-red-400 hover:bg-red-900/20"
+                            onClick={() => { respondToRequest(req.id, { doctorName: "Dr. Mehra", notes: "Referred to specialist." }); setExpandedReq(null); }}>
+                            <XCircle className="h-4 w-4" />Reject
+                          </Button>
                         </div>
                       </div>
-                    </TableCell>
-                  </TableRow>
+                    )}
+
+                    {/* Already Responded */}
+                    {req.status === "accepted" && req.doctorNotes && (
+                      <div className="border-t border-emerald-700/30 p-4 bg-emerald-950/10">
+                        <h4 className="text-sm font-semibold mb-2 text-emerald-400 flex items-center gap-2">
+                          <CheckCircle2 className="h-4 w-4" />Your Response — sent to {req.memberName}
+                        </h4>
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 text-sm">
+                          <div>
+                            <p className="text-[10px] text-muted-foreground uppercase mb-1">Clinical Notes</p>
+                            <p className="text-emerald-100/80">{req.doctorNotes}</p>
+                          </div>
+                          {req.prescription && (
+                            <div>
+                              <p className="text-[10px] text-muted-foreground uppercase mb-1">Prescription Sent</p>
+                              <p className="text-emerald-100/80 whitespace-pre-line">{req.prescription}</p>
+                            </div>
+                          )}
+                          {req.urgentAppointment && (
+                            <div>
+                              <p className="text-[10px] text-muted-foreground uppercase mb-1">Urgent Appointment</p>
+                              <p className="text-emerald-100/80">{req.urgentAppointment}</p>
+                            </div>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-emerald-400/60 mt-2">Responded at {req.respondedAt} by {req.doctorName}</p>
+                      </div>
+                    )}
+                  </div>
                 )}
-                </Fragment>
-              ))}
-              {filtered.length === 0 && (
-                <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">No patients found.</TableCell></TableRow>
-              )}
-            </TableBody>
-          </Table>
+              </Card>
+            );
+          })}
         </div>
       </div>
     </main>
