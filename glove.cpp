@@ -44,7 +44,9 @@
 
 const char *WIFI_SSID     = "Animesh";
 const char *WIFI_PASSWORD = "12345678";
-const char *API_ENDPOINT  = "http://10.3.47.53:5000/api/telemetry";
+// ⚠ Replace YOUR_PC_IP with your actual PC IP (run ipconfig → WiFi adapter).
+// The Vite dev server listens on port 8080 and accepts ESP32 JSON at /api/telemetry.
+const char *API_ENDPOINT  = "http://YOUR_PC_IP:8080/api/telemetry";
 
 Adafruit_SSD1306 display(SCREEN_W, SCREEN_H, &Wire, -1);
 Adafruit_MPU6050 mpu;
@@ -740,20 +742,27 @@ bool opticalSignalUsable() {
 
 // ===================== TELEMETRY (WiFi only) =====================
 String buildTelemetryJson() {
-  String p = "{\"ms\":";       p += String(millis());
-  p += ",\"tempC\":";          p += String(tempValid ? tempAverageC : -127.0f, 2);
-  p += ",\"tempF\":";          p += String(tempValid ? bodyTempF    : -196.6f, 2);
-  p += ",\"hr\":";             p += String(currentHeartRate());
-  p += ",\"spo2\":";           p += String(currentSpo2() > 0 ? currentSpo2() : -1);
-  p += ",\"finger\":";         p += fingerPresent ? "true" : "false";
-  p += ",\"ir\":";             p += String(irAverage);
-  p += ",\"spo2Samples\":";    p += String(spo2Samples);
-  p += ",\"motion\":{\"x\":";  p += String(accelX, 2);
-  p += ",\"y\":";              p += String(accelY, 2);
-  p += ",\"z\":";              p += String(accelZ, 2);
-  p += "},\"impactG\":";       p += String(totalG, 2);
-  p += ",\"fall\":";           p += fallDetected ? "true" : "false";
-  p += ",\"alert\":";          p += alertActive  ? "true" : "false";
+  // Field names match Flask _normalise() and MySQL schema.
+  String p = "{";
+  p += "\"patient_id\":1";
+  p += ",\"ms\":"      + String(millis());
+  p += ",\"tempC\":"   + String(tempValid ? tempAverageC : -127.0f, 2);
+  p += ",\"temp\":"    + String(tempValid ? tempAverageC : -127.0f, 2);
+  p += ",\"hr\":"      + String(currentHeartRate());
+  p += ",\"spo2\":"    + String(currentSpo2() > 0 ? currentSpo2() : -1);
+  p += ",\"finger\":"  + String(fingerPresent ? "true" : "false");
+  p += ",\"ir\":"      + String(irAverage);
+  p += ",\"gforce\":"  + String(totalG, 2);
+  p += ",\"impactG\":" + String(totalG, 2);
+  p += ",\"fall\":"    + String(fallDetected ? "true" : "false");
+  p += ",\"alert\":"   + String(alertActive  ? "true" : "false");
+  p += ",\"accelX\":"  + String(accelX, 3);
+  p += ",\"accelY\":"  + String(accelY, 3);
+  p += ",\"accelZ\":"  + String(accelZ, 3);
+  p += ",\"gyroX\":"   + String(gyroX, 3);
+  p += ",\"gyroY\":"   + String(gyroY, 3);
+  p += ",\"gyroZ\":"   + String(gyroZ, 3);
+  p += ",\"motion\":{\"x\":" + String(accelX, 2) + ",\"y\":" + String(accelY, 2) + ",\"z\":" + String(accelZ, 2) + "}";
   p += "}";
   return p;
 }
