@@ -2,8 +2,7 @@
 ml/predictor.py
 =================
 Loads the trained model and provides real-time inference.
-Called from Flask routes to add ML-based scenario classification
-alongside the rule-based risk score.
+Handles both scaled (SVM/MLP) and unscaled (RF/GBT) models transparently.
 """
 import os, pickle, json
 import numpy as np
@@ -12,16 +11,26 @@ MODEL_PATH = os.path.join(os.path.dirname(__file__), "model.pkl")
 META_PATH  = os.path.join(os.path.dirname(__file__), "model_meta.json")
 
 _model = None
+_scaler = None
+_needs_scaling = False
 _meta  = None
 
 
 def _load():
-    global _model, _meta
+    global _model, _scaler, _needs_scaling, _meta
     if not os.path.exists(MODEL_PATH):
         return False
     try:
         with open(MODEL_PATH, "rb") as f:
-            _model = pickle.load(f)
+            obj = pickle.load(f)
+        if isinstance(obj, dict):
+            _model = obj["model"]
+            _scaler = obj.get("scaler")
+            _needs_scaling = obj.get("needs_scaling", False)
+        else:
+            _model = obj  # backwards compat with old model.pkl
+            _scaler = None
+            _needs_scaling = False
         with open(META_PATH, "r") as f:
             _meta = json.load(f)
         return True
@@ -54,6 +63,9 @@ def predict(reading: dict) -> dict:
         reading.get("risk", 10),
     ]])
 
+    if _needs_scaling and _scaler is not None:
+        features = _scaler.transform(features)
+
     proba   = _model.predict_proba(features)[0]
     classes = _meta["classes"]
     idx     = int(np.argmax(proba))
@@ -63,6 +75,7 @@ def predict(reading: dict) -> dict:
         "confidence":      round(float(proba[idx]), 4),
         "probabilities":   {c: round(float(p), 4) for c, p in zip(classes, proba)},
         "model_ready":     True,
+        "algorithm":       _meta.get("best_algorithm", "unknown"),
     }
 
 

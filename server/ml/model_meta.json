@@ -1,7 +1,7 @@
 {
-  "cv_accuracy": 0.9593,
-  "cv_std": 0.009,
-  "test_accuracy": 0.9914,
+  "best_algorithm": "RandomForest",
+  "cv_accuracy": 0.9596,
+  "test_accuracy": 0.9951,
   "samples": 5400,
   "samples_per_scenario": 600,
   "classes": [
@@ -27,17 +27,165 @@
     "risk"
   ],
   "feature_importances": {
-    "hr": 0.1894,
-    "spo2": 0.1538,
-    "temp": 0.3082,
-    "gforce": 0.0911,
-    "fall": 0.0002,
-    "accelX": 0.0249,
-    "accelY": 0.0245,
-    "accelZ": 0.1652,
-    "risk": 0.0425
+    "hr": 0.1717,
+    "spo2": 0.1737,
+    "temp": 0.2986,
+    "gforce": 0.0951,
+    "fall": 0.0008,
+    "accelX": 0.0305,
+    "accelY": 0.0263,
+    "accelZ": 0.1646,
+    "risk": 0.0388
   },
-  "model": "RandomForestClassifier",
-  "n_estimators": 100,
-  "sklearn_version": "1.7.2"
+  "confusion_matrix": [
+    [
+      89,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      1,
+      89,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      90,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      90,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      1,
+      0,
+      0,
+      0,
+      89,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      90,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      90,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      90,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      89
+    ]
+  ],
+  "sklearn_version": "1.7.2",
+  "algorithm_comparison": {
+    "RandomForest": {
+      "cv_accuracy": 0.9596,
+      "cv_std": 0.011,
+      "train_time_s": 0.85
+    },
+    "GradientBoosting": {
+      "cv_accuracy": 0.9533,
+      "cv_std": 0.0214,
+      "train_time_s": 45.22
+    },
+    "SVM_RBF": {
+      "cv_accuracy": 0.9328,
+      "cv_std": 0.0173,
+      "train_time_s": 3.18
+    },
+    "KNN": {
+      "cv_accuracy": 0.9107,
+      "cv_std": 0.0221,
+      "train_time_s": 0.17
+    },
+    "MLP_NeuralNet": {
+      "cv_accuracy": 0.942,
+      "cv_std": 0.0167,
+      "train_time_s": 23.37
+    }
+  },
+  "recommended_datasets": [
+    {
+      "name": "UCI HAR",
+      "url": "https://archive.ics.uci.edu/dataset/240/human+activity+recognition+using+smartphones",
+      "use": "Fall detection + activity recognition validation"
+    },
+    {
+      "name": "MobiAct",
+      "url": "https://bmi.hmu.gr/the-mobifall-and-mobiact-datasets-2/",
+      "use": "Fall/ADL classification with accelerometer data"
+    },
+    {
+      "name": "MIMIC-III",
+      "url": "https://physionet.org/content/mimiciii/1.4/",
+      "use": "Clinical vitals (HR, SpO2, temp) for anomaly detection"
+    },
+    {
+      "name": "PPG-DaLiA",
+      "url": "https://archive.ics.uci.edu/dataset/495/ppg+dalia",
+      "use": "Wrist-worn PPG heart rate estimation"
+    }
+  ]
 }

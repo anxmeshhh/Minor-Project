@@ -17,12 +17,13 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 app.config["SOCKETIO"] = socketio
 
 # ── Register API blueprints ───────────────────────────────────────────────────
-from api.telemetry import bp as telemetry_bp
-from api.vitals    import bp as vitals_bp
-from api.demo      import bp as demo_bp
-from api.ai_routes import bp as ai_bp
-from api.patients  import bp as patients_bp
-from api.ml_routes import bp as ml_bp
+from api.telemetry  import bp as telemetry_bp
+from api.vitals     import bp as vitals_bp
+from api.demo       import bp as demo_bp
+from api.ai_routes  import bp as ai_bp
+from api.patients   import bp as patients_bp
+from api.ml_routes  import bp as ml_bp
+from api.emergency  import bp as emergency_bp
 
 app.register_blueprint(telemetry_bp)
 app.register_blueprint(vitals_bp)
@@ -30,6 +31,7 @@ app.register_blueprint(demo_bp)
 app.register_blueprint(ai_bp)
 app.register_blueprint(patients_bp)
 app.register_blueprint(ml_bp)
+app.register_blueprint(emergency_bp)
 
 # ── Health check ──────────────────────────────────────────────────────────────
 @app.route("/health")
