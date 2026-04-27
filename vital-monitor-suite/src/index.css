@@ -1,0 +1,159 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* VitalGlove design system — dark medical theme.
+   All colors HSL. Three accent statuses: safe (green), caution (amber), critical (red). */
+
+@layer base {
+  :root {
+    /* Dark navy medical theme as default */
+    --background: 222 47% 7%;
+    --foreground: 210 40% 96%;
+
+    --card: 222 40% 10%;
+    --card-foreground: 210 40% 96%;
+
+    --popover: 222 40% 10%;
+    --popover-foreground: 210 40% 96%;
+
+    --primary: 195 92% 55%;
+    --primary-foreground: 222 47% 7%;
+
+    --secondary: 217 33% 16%;
+    --secondary-foreground: 210 40% 96%;
+
+    --muted: 217 33% 14%;
+    --muted-foreground: 215 20% 70%;
+
+    --accent: 195 92% 55%;
+    --accent-foreground: 222 47% 7%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217 33% 18%;
+    --input: 217 33% 18%;
+    --ring: 195 92% 55%;
+
+    --radius: 0.75rem;
+
+    /* Status semantic tokens */
+    --safe: 142 71% 45%;
+    --safe-foreground: 0 0% 100%;
+    --caution: 38 92% 50%;
+    --caution-foreground: 0 0% 10%;
+    --critical: 0 84% 60%;
+    --critical-foreground: 0 0% 100%;
+
+    /* Surfaces */
+    --panel: 222 38% 12%;
+    --panel-elevated: 222 35% 15%;
+
+    /* Gradients & shadows */
+    --gradient-critical: linear-gradient(90deg, hsl(0 84% 55%), hsl(15 90% 55%));
+    --gradient-safe: linear-gradient(90deg, hsl(142 71% 40%), hsl(160 70% 45%));
+    --gradient-caution: linear-gradient(90deg, hsl(38 92% 50%), hsl(28 90% 55%));
+    --gradient-panel: linear-gradient(180deg, hsl(222 40% 11%), hsl(222 40% 9%));
+    --shadow-glow-critical: 0 0 32px hsl(0 84% 60% / 0.45);
+    --shadow-glow-safe: 0 0 24px hsl(142 71% 45% / 0.35);
+    --shadow-card: 0 8px 32px -12px hsl(222 70% 2% / 0.6);
+
+    --sidebar-background: 222 40% 9%;
+    --sidebar-foreground: 210 40% 96%;
+    --sidebar-primary: 195 92% 55%;
+    --sidebar-primary-foreground: 222 47% 7%;
+    --sidebar-accent: 217 33% 16%;
+    --sidebar-accent-foreground: 210 40% 96%;
+    --sidebar-border: 217 33% 18%;
+    --sidebar-ring: 195 92% 55%;
+  }
+
+  /* Doctor view — light professional theme, scoped via .theme-clinical */
+  .theme-clinical {
+    --background: 210 30% 97%;
+    --foreground: 222 47% 11%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    --primary: 222 60% 25%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 210 30% 94%;
+    --secondary-foreground: 222 47% 11%;
+
+    --muted: 210 30% 94%;
+    --muted-foreground: 215 16% 40%;
+
+    --accent: 210 30% 92%;
+    --accent-foreground: 222 47% 11%;
+
+    --destructive: 0 84% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 214 25% 88%;
+    --input: 214 25% 88%;
+    --ring: 222 60% 25%;
+
+    --panel: 0 0% 100%;
+    --panel-elevated: 210 30% 98%;
+    --shadow-card: 0 4px 18px -8px hsl(222 30% 30% / 0.18);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+  html {
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+}
+
+@layer utilities {
+  .text-safe { color: hsl(var(--safe)); }
+  .text-caution { color: hsl(var(--caution)); }
+  .text-critical { color: hsl(var(--critical)); }
+  .bg-safe { background-color: hsl(var(--safe)); }
+  .bg-caution { background-color: hsl(var(--caution)); }
+  .bg-critical { background-color: hsl(var(--critical)); }
+  .border-safe { border-color: hsl(var(--safe)); }
+  .border-caution { border-color: hsl(var(--caution)); }
+  .border-critical { border-color: hsl(var(--critical)); }
+  .bg-panel { background-color: hsl(var(--panel)); }
+  .bg-panel-elevated { background-color: hsl(var(--panel-elevated)); }
+  .shadow-card { box-shadow: var(--shadow-card); }
+  .shadow-glow-critical { box-shadow: var(--shadow-glow-critical); }
+  .shadow-glow-safe { box-shadow: var(--shadow-glow-safe); }
+  .gradient-critical { background-image: var(--gradient-critical); }
+  .gradient-safe { background-image: var(--gradient-safe); }
+  .gradient-caution { background-image: var(--gradient-caution); }
+  .gradient-panel { background-image: var(--gradient-panel); }
+  .font-mono-tabular { font-variant-numeric: tabular-nums; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+}
+
+@keyframes vg-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+@keyframes vg-pulse-ring {
+  0% { box-shadow: 0 0 0 0 hsl(0 84% 60% / 0.7); }
+  70% { box-shadow: 0 0 0 18px hsl(0 84% 60% / 0); }
+  100% { box-shadow: 0 0 0 0 hsl(0 84% 60% / 0); }
+}
+@keyframes vg-fade-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-blink { animation: vg-blink 1s ease-in-out infinite; }
+.animate-pulse-ring { animation: vg-pulse-ring 1.6s ease-out infinite; }
+.animate-fade-in { animation: vg-fade-in 0.25s ease-out; }
