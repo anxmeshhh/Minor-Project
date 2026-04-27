@@ -93,12 +93,84 @@ def _create_tables():
         id INT AUTO_INCREMENT PRIMARY KEY,
         patient_id INT DEFAULT 1,
         insight TEXT,
+        urgency VARCHAR(20) DEFAULT 'safe',
+        ml_class VARCHAR(50),
+        ml_confidence FLOAT,
+        risk_score INT,
+        doctor_specialty VARCHAR(100),
         model VARCHAR(50) DEFAULT 'llama3-70b-8192',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS family_groups (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        created_by INT DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS family_members (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        group_id INT NOT NULL,
+        patient_id INT,
+        name VARCHAR(100) NOT NULL,
+        relation VARCHAR(50) DEFAULT 'self',
+        role ENUM('admin','member') DEFAULT 'member',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (group_id) REFERENCES family_groups(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS health_entries (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        member_id INT NOT NULL,
+        category ENUM('symptoms','medications','medical_history','prescriptions','doctor_notes') NOT NULL,
+        text TEXT NOT NULL,
+        added_by VARCHAR(100) DEFAULT 'Self',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (member_id) REFERENCES family_members(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS doctor_requests (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        member_id INT NOT NULL,
+        member_name VARCHAR(100),
+        status ENUM('pending','accepted','rejected') DEFAULT 'pending',
+        ai_summary TEXT,
+        ai_urgency VARCHAR(20),
+        ml_class VARCHAR(50),
+        risk_score INT,
+        doctor_specialty VARCHAR(100),
+        doctor_name VARCHAR(100),
+        doctor_notes TEXT,
+        prescription TEXT,
+        urgent_appointment VARCHAR(200),
+        responded_at TIMESTAMP NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (member_id) REFERENCES family_members(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS notifications (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        group_id INT,
+        member_id INT,
+        type ENUM('alert','doctor_response','ai_scan','member_update','appointment') NOT NULL,
+        title VARCHAR(200) NOT NULL,
+        message TEXT,
+        is_read BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
     -- Ensure at least one demo patient exists
-    INSERT IGNORE INTO patients (id, name, age, `condition`) VALUES (1, 'Demo Patient', 28, 'Cardiac Monitoring');
+    INSERT IGNORE INTO patients (id, name, age, `condition`) VALUES (1, 'Riya Sharma', 64, 'Cardiac Monitoring');
+
+    -- Seed the demo family group
+    INSERT IGNORE INTO family_groups (id, name, created_by) VALUES (1, 'The Sharma Family', 1);
+
+    -- Seed family members
+    INSERT IGNORE INTO family_members (id, group_id, patient_id, name, relation, role) VALUES
+        (1, 1, 1, 'Riya Sharma', 'self', 'admin'),
+        (2, 1, NULL, 'Priya Sharma', 'spouse', 'member'),
+        (3, 1, NULL, 'Raj Sharma', 'son', 'member');
     """
     c = _conn()
     cur = c.cursor()
@@ -107,6 +179,7 @@ def _create_tables():
     c.commit()
     cur.close()
     c.close()
+    print("[DB] All tables verified (patients, telemetry, alerts, ai_insights, family_groups, family_members, health_entries, doctor_requests, notifications)")
 
 
 # ── write helpers ─────────────────────────────────────────────────────────────
