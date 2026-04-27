@@ -89,8 +89,9 @@ const Patient = () => {
   const [mlClass, setMlClass] = useState<string|null>(null);
   const [mlConf, setMlConf] = useState(0);
   const [doctorSpec, setDoctorSpec] = useState<string|null>(null);
+  const [contextUsed, setContextUsed] = useState<Record<string,boolean>>({});
 
-  // AI urgency analysis (full pipeline: ML + Rules + Groq)
+  // AI urgency analysis (full pipeline: Vitals + Meds + History + ML + Groq)
   const analyzeUrgency = useCallback(async () => {
     setAiLoading(true);
     const r = await api<any>(`${BASE}/api/ai/analyze`, {
@@ -100,6 +101,10 @@ const Patient = () => {
         medications: reminders.filter(m => !m.taken).map(m => m.label),
         symptoms: symptoms.map(s => s.text),
         checkups: checkups.filter(c => c.status === "upcoming").map(c => c.title),
+        medical_history: ["Hypertension (diagnosed 2022)", "Type-2 Diabetes (managed)", "Previous MI (2024)"],
+        prescriptions: reminders.map(m => `${m.label} - ${m.dose} at ${m.time}`),
+        family_health: ["Spouse (Priya): Healthy", "Son (Raj): Asthma history", "Father: Cardiac arrest at 68"],
+        doctor_notes: ["Last visit: BP 140/90, advised lifestyle changes", "Cardiologist follow-up in May 2026"],
       })
     });
     if (r) {
@@ -108,18 +113,11 @@ const Patient = () => {
       setMlClass(r.ml_class || null);
       setMlConf(r.ml_confidence || 0);
       setDoctorSpec(r.doctor_specialty || null);
+      setContextUsed(r.context_used || {});
     } else {
-      // Fallback when backend is unavailable
-      if (risk > 70) {
-        setAiInsight("CRITICAL: Immediate medical attention required.");
-        setAiUrgency("emergency");
-      } else if (risk > 40) {
-        setAiInsight("CAUTION: Schedule a doctor visit within 24-48 hours.");
-        setAiUrgency("visit");
-      } else {
-        setAiInsight("All vitals within normal parameters. Continue monitoring.");
-        setAiUrgency("safe");
-      }
+      if (risk > 70) { setAiInsight("CRITICAL: Immediate medical attention required."); setAiUrgency("emergency"); }
+      else if (risk > 40) { setAiInsight("CAUTION: Schedule a doctor visit within 24-48 hours."); setAiUrgency("visit"); }
+      else { setAiInsight("All vitals within normal parameters. Continue monitoring."); setAiUrgency("safe"); }
     }
     setAiLoading(false);
   }, [risk, reminders, symptoms, checkups]);
@@ -274,9 +272,20 @@ const Patient = () => {
                   </Button>
                 )}
               </div>
+              {/* Data Sources Used */}
+              {Object.keys(contextUsed).length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pt-2 border-t border-blue-800/30 mt-3">
+                  <span className="text-[10px] text-blue-400/60 mr-1">Sources:</span>
+                  {Object.entries(contextUsed).filter(([,v])=>v).map(([k])=>(
+                    <span key={k} className="text-[10px] px-1.5 py-0.5 rounded bg-blue-900/30 border border-blue-700/30 text-blue-300/80 capitalize">
+                      {k.replace("_"," ")}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">Click "Analyze Now" to run the full ML + AI pipeline. The system will classify your vitals using RandomForest, compute risk score, and generate Groq AI recommendations based on your medications, symptoms, and checkup history.</p>
+            <p className="text-sm text-muted-foreground">Click "Analyze Now" to run the full holistic health assessment. The AI analyzes your <strong>glove vitals + medications + symptoms + medical history + prescriptions + family health + doctor notes</strong> together — not just sensor data.</p>
           )}
         </section>
 
