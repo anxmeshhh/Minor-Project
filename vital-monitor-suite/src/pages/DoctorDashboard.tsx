@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, Fragment } from "react";
 import { Search, HeartPulse, Filter, CheckCircle2, XCircle, Brain, Clock } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -136,7 +136,8 @@ export default function DoctorDashboard() {
             </TableHeader>
             <TableBody>
               {filtered.map(p => (
-                <TableRow key={p.id} className={cn("transition-colors",
+                <Fragment key={p.id}>
+                <TableRow className={cn("transition-colors",
                   p.status==="pending"?"bg-amber-950/5":"",
                   p.status==="rejected"?"opacity-40":"")}>
                   <TableCell className="font-mono text-xs">{p.id}</TableCell>
@@ -188,7 +189,6 @@ export default function DoctorDashboard() {
                     )}
                   </TableCell>
                 </TableRow>
-                {/* Expandable Patient Profile */}
                 {expandedId === p.id && (
                   <TableRow>
                     <TableCell colSpan={10} className="bg-panel-elevated/50 p-0">
@@ -213,6 +213,7 @@ export default function DoctorDashboard() {
                     </TableCell>
                   </TableRow>
                 )}
+                </Fragment>
               ))}
               {filtered.length === 0 && (
                 <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">No patients found.</TableCell></TableRow>
