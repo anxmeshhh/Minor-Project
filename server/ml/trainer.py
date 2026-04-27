@@ -66,12 +66,8 @@ def train(samples_per_scenario: int = 600) -> dict:
     # Feature importances
     importances = {FEATURE_NAMES[i]: round(float(v), 4)
                    for i, v in enumerate(clf.feature_importances_)}
-    print("\n[ML] Feature Importances:")
-    for k, v in sorted(importances.items(), key=lambda x: -x[1]):
-        bar = "█" * int(v * 40)
-        print(f"  {k:12s} {v:.4f}  {bar}")
 
-    # Save model
+    # Save model BEFORE printing (so save always succeeds even if print encoding fails)
     with open(MODEL_PATH, "wb") as f:
         pickle.dump(clf, f)
 
@@ -92,9 +88,12 @@ def train(samples_per_scenario: int = 600) -> dict:
     with open(META_PATH, "w") as f:
         json.dump(meta, f, indent=2)
 
-    print(f"\n[ML] Model saved → {MODEL_PATH}")
-    print(f"[ML] Metadata saved → {META_PATH}")
+    print(f"\n[ML] Model saved -> {MODEL_PATH}")
+    print(f"[ML] Metadata saved -> {META_PATH}")
+
+
     return meta
+
 
 
 if __name__ == "__main__":

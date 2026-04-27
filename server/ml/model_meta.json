@@ -1,0 +1,43 @@
+{
+  "cv_accuracy": 0.9593,
+  "cv_std": 0.009,
+  "test_accuracy": 0.9914,
+  "samples": 5400,
+  "samples_per_scenario": 600,
+  "classes": [
+    "normal",
+    "hypoxia",
+    "fall",
+    "tachycardia",
+    "fever",
+    "bradycardia",
+    "sleep_apnea",
+    "arrhythmia",
+    "exercise"
+  ],
+  "feature_names": [
+    "hr",
+    "spo2",
+    "temp",
+    "gforce",
+    "fall",
+    "accelX",
+    "accelY",
+    "accelZ",
+    "risk"
+  ],
+  "feature_importances": {
+    "hr": 0.1894,
+    "spo2": 0.1538,
+    "temp": 0.3082,
+    "gforce": 0.0911,
+    "fall": 0.0002,
+    "accelX": 0.0249,
+    "accelY": 0.0245,
+    "accelZ": 0.1652,
+    "risk": 0.0425
+  },
+  "model": "RandomForestClassifier",
+  "n_estimators": 100,
+  "sklearn_version": "1.7.2"
+}
