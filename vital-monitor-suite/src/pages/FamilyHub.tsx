@@ -60,6 +60,7 @@ export default function FamilyHub() {
     setScanLoading(mid);
     const data = getAllForAi(mid);
     try {
+      const m = family.members.find(x => x.id === mid);
       const r = await fetch(`${BASE}/api/ai/analyze`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -67,7 +68,7 @@ export default function FamilyHub() {
           symptoms: data.symptoms, medications: data.medications,
           medical_history: data.medicalHistory, prescriptions: data.prescriptions,
           doctor_notes: data.doctorNotes, family_health: data.familyHealth,
-          checkups: [],
+          checkups: m?.checkups.filter(c => c.status === "upcoming").map(c => c.title) || [],
         }),
       });
       const res = await r.json();

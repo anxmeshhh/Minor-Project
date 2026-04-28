@@ -150,7 +150,8 @@ const Patient = () => {
         <header className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="text-sm uppercase tracking-widest text-muted-foreground">Patient Dashboard</p>
-            <h1 className="text-3xl font-semibold tracking-tight">Live Vitals Monitor</h1>
+            <h1 className="text-3xl font-semibold tracking-tight">{selfData.name || "Live Vitals Monitor"}</h1>
+            <p className="text-xs text-muted-foreground mt-0.5">Profile synced from <strong>{family.name}</strong> · Member ID: {selfData.id || "—"}</p>
           </div>
           <div className="flex items-center gap-3">
             <button onClick={syncGlove} disabled={gloveSync==="syncing"}
@@ -432,7 +433,7 @@ const Patient = () => {
                 <div className="h-2.5 w-2.5 rounded-full bg-emerald-400 animate-pulse" />
                 <div>
                   <p className="text-sm font-medium">{m.name} <span className="text-muted-foreground capitalize">({m.relation})</span></p>
-                  <p className="text-[11px] text-muted-foreground">Online · ID: {m.id}</p>
+                  <p className="text-[11px] text-muted-foreground">Active · {m.symptoms.length} symptoms · {m.medications.length} meds</p>
                 </div>
               </div>
             ))}
@@ -491,8 +492,9 @@ const Patient = () => {
               <AlertTriangle className="h-5 w-5" />Glove Anomaly Detected
             </DialogTitle>
             <DialogDescription className="text-base mt-2">
-              The Smart Glove detected an <strong>Abnormal Heart Rate (135 BPM)</strong> indicating possible Arrhythmia.
-              <br /><br />Based on this reading, we recommend scheduling a consultation with a specialist.
+              The Smart Glove detected an <strong>Abnormal Heart Rate ({latest?.hr ?? "—"} BPM)</strong>
+              {mlClass ? <> indicating possible <strong className="capitalize">{mlClass.replace("_"," ")}</strong> ({(mlConf*100).toFixed(0)}% confidence).</> : " — vitals out of normal range."}
+              <br /><br />Based on this reading and your medical profile ({selfData.medicalHistory.length} conditions, {selfData.medications.length} medications), we recommend scheduling a consultation{doctorSpec ? <> with a <strong>{doctorSpec}</strong></> : " with a specialist"}.
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-3 mt-4">

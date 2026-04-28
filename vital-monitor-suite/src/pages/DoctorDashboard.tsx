@@ -12,12 +12,23 @@ import { useNavigate } from "react-router-dom";
 import { useHealthData, type DoctorRequest } from "@/context/HealthDataContext";
 import { toast } from "sonner";
 
-/* ─── Mock vitals for doctor's patient view ─── */
-const MOCK_VITALS: Record<string, { hr: number; spo2: number; temp: number; history: number[]; risk: string }> = {
-  "1": { hr: 135, spo2: 92, temp: 37.1, history: [80,85,95,110,125,130,135], risk: "Critical" },
-  "2": { hr: 72, spo2: 98, temp: 36.8, history: [70,71,72,73,72,71,72], risk: "Low" },
-  "3": { hr: 88, spo2: 96, temp: 36.9, history: [80,82,85,86,87,88,88], risk: "Low" },
-};
+/* ─── Derive vitals display from member's DB data ─── */
+function memberVitals(member: any, req: any) {
+  const lastMl = member?.mlResults?.[0];
+  const summary = lastMl?.input_summary || "";
+  const parse = (key: string, fallback: number) => {
+    const m = summary.match(new RegExp(key + "=(\\d+)"));
+    return m ? parseInt(m[1]) : fallback;
+  };
+  const hr = parse("HR", 72);
+  const spo2 = parse("SpO2", 98);
+  const temp = parse("Temp", 36.5);
+  const riskScore = req.risk_score || lastMl?.risk_score || 15;
+  const risk = riskScore > 70 ? "Critical" : riskScore > 40 ? "Caution" : "Low";
+  // Build a fake trend from the HR
+  const history = Array.from({ length: 7 }, (_, i) => hr + Math.round(Math.sin(i * 0.9) * 5));
+  return { hr, spo2, temp, history, risk };
+}
 
 const urgBadge: Record<string, string> = {
   safe: "bg-emerald-500/15 text-emerald-400 border-emerald-700/40",
@@ -96,7 +107,7 @@ export default function DoctorDashboard() {
 
           {filtered.map(req => {
             const member = getMember(req.member_id);
-            const vitals = MOCK_VITALS[String(req.member_id)] || MOCK_VITALS["1"];
+            const vitals = memberVitals(member, req);
             const isExpanded = expandedReq === req.id;
 
             return (

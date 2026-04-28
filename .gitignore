@@ -6,7 +6,7 @@ __pycache__/
 .eggs/
 dist/
 build/
-*.pkl
+# *.pkl  — do NOT ignore: server/ml/model.pkl is required
 
 # ──────── Environment ────────
 .env
