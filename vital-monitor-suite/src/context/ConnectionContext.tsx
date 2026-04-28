@@ -21,9 +21,14 @@ interface Persisted { mode: ConnectionMode; deviceUrl: string; }
 function load(): Persisted {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as Persisted;
+    if (raw) {
+      const parsed = JSON.parse(raw) as Persisted;
+      // Migrate old 'mock' default → 'flask' so all pages use the real backend
+      if (parsed.mode === "mock") parsed.mode = "flask";
+      return parsed;
+    }
   } catch { /* ignore */ }
-  return { mode: "mock", deviceUrl: "http://192.168.4.1/data" };
+  return { mode: "flask", deviceUrl: "http://192.168.4.1/data" };
 }
 
 export function ConnectionProvider({ children }: { children: ReactNode }) {
@@ -35,10 +40,11 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ mode, deviceUrl }));
   }, [mode, deviceUrl]);
 
+  // Always use Flask backend — this ensures scenario switching, ML, and
+  // escalation work identically across DemoPanel, Patient, and all pages.
   const endpoint =
-    mode === "mock"   ? "/api/latest" :      // Vite mock plugin
-    mode === "flask"  ? FLASK_URL     :      // Flask backend
-    deviceUrl;                               // Direct ESP32 URL
+    mode === "device" ? deviceUrl :    // Direct ESP32 URL
+    FLASK_URL;                         // Flask backend (default)
 
   return (
     <Ctx.Provider value={{ mode, deviceUrl, setMode: setModeState, setDeviceUrl: setDeviceUrlState, endpoint }}>
@@ -52,3 +58,4 @@ export function useConnection(): ConnectionCtx {
   if (!c) throw new Error("useConnection must be used inside ConnectionProvider");
   return c;
 }
+

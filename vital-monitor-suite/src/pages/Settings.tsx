@@ -58,21 +58,21 @@ export default function Settings() {
 
         <RadioGroup value={mode} onValueChange={(v) => setMode(v as "mock" | "device")} className="space-y-3">
           <label
-            htmlFor="mode-mock"
+            htmlFor="mode-flask"
             className={cn(
               "flex items-start gap-3 rounded-lg border border-border/60 p-4 cursor-pointer transition-colors",
-              mode === "mock" ? "bg-card border-primary/60" : "bg-card/40 hover:bg-card/70",
+              mode !== "device" ? "bg-card border-primary/60" : "bg-card/40 hover:bg-card/70",
             )}
           >
-            <RadioGroupItem id="mode-mock" value="mock" className="mt-1" />
+            <RadioGroupItem id="mode-flask" value="mock" className="mt-1" />
             <div className="flex-1">
               <div className="flex items-center gap-2">
                 <Radio className="h-4 w-4 text-primary" />
-                <span className="font-medium">Simulated stream</span>
+                <span className="font-medium">Flask Backend (Simulation + Real Glove)</span>
               </div>
               <p className="text-sm text-muted-foreground mt-1">
-                Built-in mock generator at <code className="font-mono-tabular">/api/latest</code>. Works offline,
-                great for demos.
+                Connects to Flask at <code className="font-mono-tabular">localhost:5001/api/latest</code>.
+                Supports scenario switching, ML classification, and real ESP32 glove data — all in one.
               </p>
             </div>
           </label>
@@ -88,10 +88,10 @@ export default function Settings() {
             <div className="flex-1">
               <div className="flex items-center gap-2">
                 <Wifi className="h-4 w-4 text-primary" />
-                <span className="font-medium">Real ESP32 over Wi-Fi</span>
+                <span className="font-medium">Direct ESP32 over Wi-Fi</span>
               </div>
               <p className="text-sm text-muted-foreground mt-1 mb-3">
-                Point to a device on your local network that returns the same JSON shape.
+                Point directly to a device on your local network (bypasses Flask).
               </p>
               <div className="space-y-1.5">
                 <Label htmlFor="device-url">Device URL</Label>

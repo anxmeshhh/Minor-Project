@@ -46,8 +46,8 @@ const char *WIFI_SSID      = "Animesh";
 const char *WIFI_PASSWORD  = "12345678";
 // ⚠ Replace YOUR_PC_IP with your actual PC IP (ipconfig → WiFi adapter IPv4).
 // Flask backend runs on port 5001. Vite dev server on port 8080.
-const char *API_ENDPOINT      = "http://YOUR_PC_IP:5001/api/telemetry";  // POST vitals
-const char *COMMAND_ENDPOINT  = "http://YOUR_PC_IP:5001/api/glove/command"; // GET scenario
+const char *API_ENDPOINT      = "http://10.218.118.4:5001/api/telemetry";  // POST vitals
+const char *COMMAND_ENDPOINT  = "http://10.218.118.4:5001/api/glove/command"; // GET scenario
 
 Adafruit_SSD1306 display(SCREEN_W, SCREEN_H, &Wire, -1);
 Adafruit_MPU6050 mpu;
@@ -64,6 +64,14 @@ bool max30102Ready = false;
 char activeScenarioLabel[40] = "Normal Monitoring";  // shown on OLED status bar
 char activeScenarioId[20]    = "normal";
 int  activeTier              = 0;  // 0=safe 1=L1 2=L2 3=L3
+
+// ── Simulation override: when a scenario is active, replace real sensor values ─
+bool  simOverride    = false;
+int   simHr          = 0;
+int   simSpo2        = 0;
+float simTemp        = 0.0f;
+float simGforce      = 1.0f;
+bool  simFall        = false;
 
 enum Mode { MODE_VITALS, MODE_ENV, MODE_ALERT };
 Mode currentMode = MODE_VITALS;
@@ -352,6 +360,15 @@ void serialReport() {
 
   // Alerts
   Serial.print("  Alert : "); Serial.println(alertActive ? "ACTIVE" : "none");
+
+  // WiFi + Scenario status
+  Serial.print("  WiFi  : "); Serial.println(WiFi.status() == WL_CONNECTED ? "CONNECTED" : "DISCONNECTED");
+  Serial.print("  Scene : "); Serial.print(activeScenarioLabel);
+  Serial.print("  SimOvr: "); Serial.println(simOverride ? "YES" : "NO");
+  if (simOverride) {
+    Serial.printf("  SimVal: HR=%d SpO2=%d Temp=%.1f G=%.2f Fall=%s\n",
+                  simHr, simSpo2, simTemp, simGforce, simFall ? "Y" : "N");
+  }
   Serial.println("----------------------");
 }
 
@@ -506,12 +523,14 @@ void readMotion() {
 
 // ===================== ALERTS =====================
 void evaluateAlerts() {
-  lowTempAlert  = tempValid && !isnan(tempAverageC) && tempAverageC < TEMP_LOW_C;
-  highTempAlert = tempValid && !isnan(tempAverageC) && tempAverageC > TEMP_HIGH_C;
-  lowHrAlert    = fingerPresent && currentHeartRate() > 0 && currentHeartRate() < HR_LOW;
-  highHrAlert   = fingerPresent && currentHeartRate() > HR_HIGH;
-  lowSpo2Alert  = fingerPresent && currentSpo2() > 0 && currentSpo2() < SPO2_LOW;
-  const bool newAlertState = lowTempAlert || highTempAlert || lowHrAlert || highHrAlert || lowSpo2Alert || fallDetected;
+  float t = currentTemp();
+  bool hasFinger = fingerPresent || simOverride;
+  lowTempAlert  = !isnan(t) && t < TEMP_LOW_C;
+  highTempAlert = !isnan(t) && t > TEMP_HIGH_C;
+  lowHrAlert    = hasFinger && currentHeartRate() > 0 && currentHeartRate() < HR_LOW;
+  highHrAlert   = hasFinger && currentHeartRate() > HR_HIGH;
+  lowSpo2Alert  = hasFinger && currentSpo2() > 0 && currentSpo2() < SPO2_LOW;
+  const bool newAlertState = lowTempAlert || highTempAlert || lowHrAlert || highHrAlert || lowSpo2Alert || currentFall();
   if (newAlertState && !alertActive) { alertHoldUntil = millis() + ALERT_HOLD_MS; startAlertPattern(); }
   alertActive = newAlertState;
 }
@@ -554,7 +573,8 @@ void updateTrend() {
   memmove(tempTrend, tempTrend + 1, (TREND_POINTS - 1) * sizeof(uint8_t));
 
   // Map to 1-9 for 10px sparkline height (panels enlarged in final layout)
-  if (fingerPresent && currentHeartRate() > 0) {
+  bool hasFinger = fingerPresent || simOverride;
+  if (hasFinger && currentHeartRate() > 0) {
     int hr = currentHeartRate();
     if (hr < 40)  hr = 40;
     if (hr > 160) hr = 160;
@@ -563,8 +583,9 @@ void updateTrend() {
     hrTrend[TREND_POINTS - 1] = 0;
   }
 
-  if (tempValid && !isnan(tempAverageC)) {
-    int t = (int)(tempAverageC * 10.0f);
+  float ct = currentTemp();
+  if (!isnan(ct)) {
+    int t = (int)(ct * 10.0f);
     if (t < 200) t = 200;
     if (t > 420) t = 420;
     tempTrend[TREND_POINTS - 1] = (uint8_t)map(t, 200, 420, 1, 9);
@@ -621,7 +642,7 @@ void renderVitalsDashboard() {
   display.setCursor(95, 46); display.print("SIG");
   display.setCursor(95, 55); display.print(opticalSignalPercent()); display.print("%");
 
-  drawBadge(60, 2, 14, "F", fingerPresent);
+  drawBadge(60, 2, 14, "F", fingerPresent || simOverride);
   drawBadge(76, 2, 14, "M", max30102Ready);
   drawBadge(92, 2, 14, "W", WiFi.status() == WL_CONNECTED);
 }
@@ -635,14 +656,16 @@ void renderEnvDashboard() {
   display.setTextSize(1); display.setCursor(9, 15); display.print("TEMP");
   display.setCursor(56, 15); display.print("C");
   display.setTextSize(2); display.setCursor(9, 24);
-  if (tempValid) { dtostrf(tempAverageC, 4, 1, buf); display.print(buf); }
-  else { display.print("--"); }
+  { float ct = currentTemp();
+    if (!isnan(ct)) { dtostrf(ct, 4, 1, buf); display.print(buf); }
+    else { display.print("--"); }
+  }
 
   // G-force panel — large value (real or simulated)
   drawPanel(82, 13, 42, 27);
   display.setTextSize(1); display.setCursor(87, 15); display.print("|G|");
   display.setTextSize(2); display.setCursor(87, 24);
-  dtostrf(totalG, 3, 1, buf); display.print(buf);
+  dtostrf(currentGforce(), 3, 1, buf); display.print(buf);
   display.setTextSize(1);
 
   // Temp trend
@@ -657,8 +680,8 @@ void renderEnvDashboard() {
   display.setCursor(70, 55);
   display.print("Y:"); dtostrf(accelY, 4, 1, buf); display.print(buf);
 
-  drawBadge(60, 2, 14, "T", tempValid);
-  drawBadge(76, 2, 14, "G", totalG > 1.10f);
+  drawBadge(60, 2, 14, "T", !isnan(currentTemp()));
+  drawBadge(76, 2, 14, "G", currentGforce() > 1.10f);
   drawBadge(92, 2, 14, "W", WiFi.status() == WL_CONNECTED);
 }
 
@@ -667,7 +690,7 @@ void renderAlertScreen() {
   drawPanel(4, 15, 120, 45);
   display.setTextSize(1); display.setCursor(13, 22); display.print("Quick Alert");
   display.drawFastHLine(13, 31, 102, SSD1306_WHITE);
-  if (fallDetected)  { display.setCursor(24, 40); display.print("Impact detected"); return; }
+  if (currentFall())  { display.setCursor(24, 40); display.print("Impact detected"); return; }
   if (highHrAlert)   { display.setCursor(34, 40); display.print("High HR");        return; }
   if (lowHrAlert)    { display.setCursor(36, 40); display.print("Low HR");         return; }
   if (lowSpo2Alert)  { display.setCursor(30, 40); display.print("Low SpO2");       return; }
@@ -723,6 +746,7 @@ void drawBadge(int16_t x, int16_t y, int16_t w, const char *label, bool active) 
 
 // ===================== HELPERS =====================
 int currentHeartRate() {
+  if (simOverride && simHr > 0) return simHr;
   if (avgBpm > 0) return avgBpm;
   if (bpm >= 40.0f && bpm <= 220.0f) return static_cast<int>(bpm + 0.5f);
   if (hrValid && hrVal >= 40 && hrVal <= 220) return hrVal;
@@ -730,8 +754,24 @@ int currentHeartRate() {
 }
 
 int currentSpo2() {
+  if (simOverride && simSpo2 > 0) return simSpo2;
   if (spo2Valid && spo2Val >= 70 && spo2Val <= 100) return spo2Val;
   return 0;
+}
+
+float currentTemp() {
+  if (simOverride) return simTemp;
+  return tempValid ? tempAverageC : NAN;
+}
+
+float currentGforce() {
+  if (simOverride) return simGforce;
+  return totalG;
+}
+
+bool currentFall() {
+  if (simOverride) return simFall;
+  return fallDetected;
 }
 
 int opticalSignalPercent() {
@@ -753,18 +793,21 @@ bool opticalSignalUsable() {
 // ===================== TELEMETRY (WiFi only) =====================
 String buildTelemetryJson() {
   // Field names match Flask _normalise() and MySQL schema.
+  float t  = currentTemp();
+  float g  = currentGforce();
+  bool  fl = currentFall();
   String p = "{";
   p += "\"patient_id\":1";
   p += ",\"ms\":"      + String(millis());
-  p += ",\"tempC\":"   + String(tempValid ? tempAverageC : -127.0f, 2);
-  p += ",\"temp\":"    + String(tempValid ? tempAverageC : -127.0f, 2);
+  p += ",\"tempC\":"   + String(isnan(t) ? -127.0f : t, 2);
+  p += ",\"temp\":"    + String(isnan(t) ? -127.0f : t, 2);
   p += ",\"hr\":"      + String(currentHeartRate());
   p += ",\"spo2\":"    + String(currentSpo2() > 0 ? currentSpo2() : -1);
-  p += ",\"finger\":"  + String(fingerPresent ? "true" : "false");
-  p += ",\"ir\":"      + String(irAverage);
-  p += ",\"gforce\":"  + String(totalG, 2);
-  p += ",\"impactG\":" + String(totalG, 2);
-  p += ",\"fall\":"    + String(fallDetected ? "true" : "false");
+  p += ",\"finger\":"  + String(fingerPresent || simOverride ? "true" : "false");
+  p += ",\"ir\":"      + String(simOverride ? 150000UL : irAverage);
+  p += ",\"gforce\":"  + String(g, 2);
+  p += ",\"impactG\":" + String(g, 2);
+  p += ",\"fall\":"    + String(fl ? "true" : "false");
   p += ",\"alert\":"   + String(alertActive  ? "true" : "false");
   p += ",\"accelX\":"  + String(accelX, 3);
   p += ",\"accelY\":"  + String(accelY, 3);
@@ -796,8 +839,8 @@ void sendTelemetry() {
   if (millis() - lastTelemetry < TELEMETRY_MS) return;
   lastTelemetry = millis();
 
-  // Do not send while SpO2 buffer is still filling.
-  if (spo2Samples < SPO2_BUF_LEN) return;
+  // Do not send while SpO2 buffer is still filling (skip check during sim override).
+  if (!simOverride && spo2Samples < SPO2_BUF_LEN) return;
   if (WiFi.status() != WL_CONNECTED) return;
 
   HTTPClient http;
@@ -817,12 +860,16 @@ void pollScenarioCommand() {
   static unsigned long lastPoll = 0;
   if (millis() - lastPoll < 3000UL) return;
   lastPoll = millis();
-  if (WiFi.status() != WL_CONNECTED) return;
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("[POLL]  Skip - WiFi not connected");
+    return;
+  }
 
   HTTPClient http;
   http.begin(COMMAND_ENDPOINT);
   http.setTimeout(500);
   int code = http.GET();
+  Serial.printf("[POLL]  GET %s -> %d\n", COMMAND_ENDPOINT, code);
   if (code == 200) {
     String body = http.getString();
     // Minimal JSON parse without a library — extract "label" and "scenario" fields
@@ -848,13 +895,45 @@ void pollScenarioCommand() {
     String label    = extractStr("label");
     String scenario = extractStr("scenario");
     int    tier     = extractInt("tier");
+    int    ovrFlag  = extractInt("override");  // 1 when scenario != normal
 
     if (label.length() > 0) {
       label.toCharArray(activeScenarioLabel, sizeof(activeScenarioLabel));
       scenario.toCharArray(activeScenarioId,    sizeof(activeScenarioId));
       activeTier = tier;
-      Serial.printf("[CMD]  Scenario: %s  Tier: %d\n", activeScenarioLabel, activeTier);
-      // Force a display refresh to show new scenario on OLED
+
+      // Apply simulation override vitals from server
+      simOverride = (ovrFlag == 1);
+      if (simOverride) {
+        simHr     = extractInt("hr");
+        simSpo2   = extractInt("spo2");
+        simGforce = extractInt("gforce") / 100.0f;  // sent as e.g. 102 → 1.02
+        simFall   = (extractInt("fall") == 1);
+        // temp is sent as float like 36.7 — parse from string
+        String tempStr = extractStr("temp");
+        if (tempStr.length() == 0) {
+          // temp is a number not a string, extract manually
+          String tKey = "\"temp\":";
+          int tStart = body.indexOf(tKey);
+          if (tStart >= 0) {
+            tStart += tKey.length();
+            int tEnd = tStart;
+            while (tEnd < (int)body.length() && (isDigit(body[tEnd]) || body[tEnd] == '.' || body[tEnd] == '-')) tEnd++;
+            simTemp = body.substring(tStart, tEnd).toFloat();
+          }
+        } else {
+          simTemp = tempStr.toFloat();
+        }
+      } else {
+        simHr = 0; simSpo2 = 0; simTemp = 0; simGforce = 1.0f; simFall = false;
+      }
+
+      Serial.printf("[CMD]  Scenario: %s  Tier: %d  Override: %s\n",
+                    activeScenarioLabel, activeTier, simOverride ? "YES" : "NO");
+      if (simOverride) {
+        Serial.printf("[CMD]  Sim HR=%d SpO2=%d Temp=%.1f G=%.2f Fall=%s\n",
+                      simHr, simSpo2, simTemp, simGforce, simFall ? "YES" : "NO");
+      }
       if (displayReady) display.clearDisplay();
     }
   }

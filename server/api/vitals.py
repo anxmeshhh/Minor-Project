@@ -19,17 +19,35 @@ _scenario_start_tick: int = 0
 @bp.route("/api/latest", methods=["GET"])
 def get_latest():
     global _sim_tick, _sim_scenario
-    source = current_app.config.get("DATA_SOURCE", "simulation")
     esp32  = current_app.config.get("ESP32_LATEST")
     ts     = current_app.config.get("LAST_ESP32_TS", 0)
+    esp32_alive = esp32 and (time.time() * 1000 - ts) < 6000
 
-    if source == "device" and esp32 and (time.time() * 1000 - ts) < 6000:
-        reading = dict(esp32)
-    else:
-        # Simulation
+    # ── Smart source selection ────────────────────────────────────────────
+    # Scenario active  → always simulation (both dashboard and glove show sim)
+    # Normal + glove   → real device data  (both show real hardware readings)
+    # Normal, no glove → simulation fallback
+    active_scenario = _sim_scenario  # None when "normal"
+
+    if active_scenario:
+        # Non-normal scenario: generate simulation data
         _sim_tick += 1
         age = _sim_tick - _scenario_start_tick
         reading = sim_build(_sim_tick, _sim_scenario, age_ticks=age)
+        reading["source"] = "simulation"
+    elif esp32_alive:
+        # Normal mode + ESP32 connected: use real glove data
+        reading = dict(esp32)
+        reading["source"] = "device"
+    else:
+        # Normal mode, no glove: simulation fallback
+        _sim_tick += 1
+        age = _sim_tick - _scenario_start_tick
+        reading = sim_build(_sim_tick, None, age_ticks=age)
+        reading["source"] = "simulation"
+
+    # ── Share the latest reading so /api/glove/command serves identical data ─
+    current_app.config["LATEST_SIM_READING"] = reading
 
     # ── Enrich with ML prediction ────────────────────────────────────────
     ml_result = predictor.predict(reading)
