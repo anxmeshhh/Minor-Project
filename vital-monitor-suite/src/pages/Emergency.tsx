@@ -1,9 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { Heart, Droplets, Thermometer, Zap, MapPin, Phone, Users, Stethoscope, CheckCircle2, Clock, Circle } from "lucide-react";
+import { Heart, Droplets, Thermometer, Zap, MapPin, Phone, Users, Stethoscope, CheckCircle2, Clock, Circle, AlertTriangle, Brain, Send } from "lucide-react";
 import { useVitalsCtx } from "@/context/VitalsContext";
+import { useAuth } from "@/context/AuthContext";
+import { useHealthData } from "@/context/HealthDataContext";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 type StepStatus = "pending" | "triggered" | "done";
 interface Step { key: "doctor" | "family" | "ambulance"; label: string; status: StepStatus; at: number | null; }
@@ -12,6 +16,118 @@ interface LogEntry { id: string; at: number; text: string; }
 const PATIENT_ADDRESS = "Flat 402, Sunrise Apartments, MG Road, Bengaluru — 560001";
 
 const Emergency = () => {
+  const { user } = useAuth();
+  return user?.role === "doctor" ? <DoctorEmergency /> : <PatientEmergency />;
+};
+
+/* ═══════════════════ DOCTOR EMERGENCY VIEW ═══════════════════ */
+function DoctorEmergency() {
+  const { latest } = useVitalsCtx();
+  const { doctorRequests, family, respondToRequest } = useHealthData();
+  const risk = latest?.risk ?? 0;
+  const [noteInput, setNoteInput] = useState("");
+
+  const urgentCases = doctorRequests.filter(r => r.status === "pending" && (r.ai_urgency === "emergency" || r.ai_urgency === "visit"));
+  const allPending = doctorRequests.filter(r => r.status === "pending");
+
+  const handleQuickRespond = async (reqId: number, memberName: string) => {
+    if (!noteInput.trim()) { toast.error("Add emergency notes first"); return; }
+    await respondToRequest(reqId, { doctorName: "Dr. Mehra", notes: `[EMERGENCY] ${noteInput.trim()}` });
+    toast.success(`Emergency response sent for ${memberName}`);
+    setNoteInput("");
+  };
+
+  return (
+    <main className="min-h-[calc(100vh-3.5rem)] bg-background">
+      <div className="container py-8 space-y-6">
+        <header>
+          <p className="text-xs uppercase tracking-widest text-muted-foreground">Doctor Emergency Console</p>
+          <h1 className="text-3xl font-semibold tracking-tight">Incoming Patient Alerts</h1>
+        </header>
+
+        {/* Live vitals banner */}
+        <section className={cn("rounded-2xl px-8 py-6 shadow-card flex flex-wrap items-center justify-between gap-6",
+          risk > 70 ? "gradient-critical text-critical-foreground animate-pulse-ring" : risk > 40 ? "gradient-caution text-caution-foreground" : "gradient-safe text-safe-foreground")}>
+          <div>
+            <p className="text-xs uppercase tracking-[0.3em] opacity-90">Live Glove Feed</p>
+            <h2 className="text-2xl font-bold mt-1">HR {latest?.hr ?? "—"} · SpO₂ {latest?.spo2 ?? "—"}% · {latest?.temp?.toFixed(1) ?? "—"}°C</h2>
+          </div>
+          <div className="text-right">
+            <p className="text-xs uppercase tracking-widest opacity-90">Risk</p>
+            <p className="text-5xl font-bold font-mono-tabular leading-none">{risk}</p>
+          </div>
+        </section>
+
+        {/* Urgent cases */}
+        <section className="rounded-xl border border-red-700/30 bg-red-950/10 p-6 shadow-card">
+          <div className="flex items-center gap-2 mb-4">
+            <AlertTriangle className="h-5 w-5 text-red-400" />
+            <h2 className="font-semibold text-lg">Urgent Cases ({urgentCases.length})</h2>
+          </div>
+          {urgentCases.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">No urgent cases right now. All patients stable.</p>
+          ) : (
+            <div className="space-y-3">
+              {urgentCases.map(req => (
+                <div key={req.id} className="rounded-lg border border-red-700/40 bg-red-950/20 p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-full bg-red-500/20 grid place-items-center text-red-400 font-bold">{req.member_name.charAt(0)}</div>
+                      <div>
+                        <p className="font-semibold">{req.member_name}</p>
+                        <p className="text-xs text-muted-foreground">{req.created_at} · {req.ai_urgency?.toUpperCase()} · ML: {req.ml_class || "—"}</p>
+                      </div>
+                    </div>
+                    <span className={cn("text-xs px-2.5 py-1 rounded-full border font-medium",
+                      req.ai_urgency === "emergency" ? "bg-red-500/15 text-red-400 border-red-700/40 animate-pulse" : "bg-amber-500/15 text-amber-400 border-amber-700/40"
+                    )}>{req.ai_urgency}</span>
+                  </div>
+                  {req.ai_summary && <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{req.ai_summary}</p>}
+                  <div className="flex gap-2">
+                    <Input value={noteInput} onChange={e => setNoteInput(e.target.value)} placeholder="Emergency notes..." className="text-sm" />
+                    <Button size="sm" variant="destructive" onClick={() => handleQuickRespond(req.id, req.member_name)}>
+                      <Send className="h-3.5 w-3.5 mr-1.5" />Respond
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* All pending */}
+        <section className="rounded-xl border border-border bg-panel p-6 shadow-card">
+          <h2 className="font-semibold text-lg mb-4">All Pending Requests ({allPending.length})</h2>
+          {allPending.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No pending requests.</p>
+          ) : (
+            <div className="space-y-2">
+              {allPending.map(req => (
+                <div key={req.id} className="flex items-center justify-between rounded-lg border border-border/60 bg-panel-elevated px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <div className="h-8 w-8 rounded-full bg-primary/15 grid place-items-center text-primary text-sm font-bold">{req.member_name.charAt(0)}</div>
+                    <div>
+                      <p className="text-sm font-medium">{req.member_name}</p>
+                      <p className="text-xs text-muted-foreground">{req.ml_class || "pending"} · Risk: {req.risk_score ?? "—"}/100</p>
+                    </div>
+                  </div>
+                  <span className={cn("text-xs px-2 py-0.5 rounded-full border",
+                    req.ai_urgency === "emergency" ? "bg-red-500/15 text-red-400 border-red-700/40" :
+                    req.ai_urgency === "visit" ? "bg-amber-500/15 text-amber-400 border-amber-700/40" :
+                    "bg-emerald-500/15 text-emerald-400 border-emerald-700/40"
+                  )}>{req.ai_urgency || "safe"}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
+    </main>
+  );
+}
+
+/* ═══════════════════ PATIENT EMERGENCY VIEW ═══════════════════ */
+function PatientEmergency() {
   const { latest } = useVitalsCtx();
   const risk = latest?.risk ?? 0;
   const isCritical = !!latest && (latest.fall || risk > 85);
@@ -290,6 +406,6 @@ const Emergency = () => {
       </Dialog>
     </main>
   );
-};
+}
 
 export default Emergency;
