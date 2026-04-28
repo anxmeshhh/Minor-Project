@@ -1,4 +1,4 @@
-import { useState, Fragment } from "react";
+import { useState, useEffect, Fragment } from "react";
 import { Search, HeartPulse, Filter, CheckCircle2, XCircle, Brain, Clock, FileText, Pill, Users, Send, AlertTriangle, ClipboardList, Calendar } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -48,6 +48,43 @@ export default function DoctorDashboard() {
   const [prescInput, setPrescInput] = useState("");
   const [apptInput, setApptInput] = useState("");
 
+  // Doctor Profile state
+  const [docProfile, setDocProfile] = useState<any>(null);
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [profileForm, setProfileForm] = useState({ name: "", specialization: "", experience_years: 0, availability: "Available", hospital: "", phone: "" });
+
+  // Fetch doctor profile on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch("http://localhost:5001/api/doctor-profile/2");
+        if (r.ok) {
+          const data = await r.json();
+          if (data && data.id) {
+            setDocProfile(data);
+            setProfileForm({
+              name: data.name || "", specialization: data.specialization || "",
+              experience_years: data.experience_years || 0, availability: data.availability || "Available",
+              hospital: data.hospital || "", phone: data.phone || "",
+            });
+          }
+        }
+      } catch { /* ignore */ }
+    })();
+  }, []);
+
+  const saveProfile = async () => {
+    try {
+      await fetch("http://localhost:5001/api/doctor-profile/2", {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(profileForm),
+      });
+      setDocProfile(profileForm);
+      setEditingProfile(false);
+      toast.success("Doctor profile saved to database");
+    } catch { toast.error("Failed to save profile"); }
+  };
+
   const filtered = doctorRequests.filter(r => {
     if (tab === "pending" && r.status !== "pending") return false;
     if (tab === "accepted" && r.status !== "accepted") return false;
@@ -58,7 +95,7 @@ export default function DoctorDashboard() {
   const handleAcceptAndRespond = async (req: DoctorRequest) => {
     if (!noteInput.trim()) { toast.error("Please add clinical notes before accepting"); return; }
     await respondToRequest(req.id, {
-      doctorName: "Dr. Mehra",
+      doctorName: docProfile?.name || "Dr. Mehra",
       notes: noteInput.trim(),
       prescription: prescInput.trim() || undefined,
       urgentAppointment: apptInput.trim() || undefined,
@@ -96,6 +133,53 @@ export default function DoctorDashboard() {
             </div>
           </div>
         </header>
+
+        {/* Doctor Profile Card */}
+        <div className="mb-6 rounded-xl border border-teal-700/30 bg-teal-950/10 p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <HeartPulse className="h-4 w-4 text-teal-400" />
+              <h2 className="text-sm font-semibold">Doctor Profile</h2>
+              <span className="text-[10px] text-muted-foreground">Stored in doctor_profiles table</span>
+            </div>
+            {editingProfile ? (
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={() => setEditingProfile(false)} className="text-xs">Cancel</Button>
+                <Button size="sm" onClick={saveProfile} className="text-xs">Save to DB</Button>
+              </div>
+            ) : (
+              <Button size="sm" variant="outline" onClick={() => setEditingProfile(true)} className="text-xs border-teal-700/40 text-teal-300">
+                Edit Profile
+              </Button>
+            )}
+          </div>
+          {editingProfile ? (
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <div><label className="text-[10px] text-muted-foreground">Name</label><Input value={profileForm.name} onChange={e => setProfileForm(p => ({ ...p, name: e.target.value }))} /></div>
+              <div><label className="text-[10px] text-muted-foreground">Specialization</label><Input value={profileForm.specialization} onChange={e => setProfileForm(p => ({ ...p, specialization: e.target.value }))} /></div>
+              <div><label className="text-[10px] text-muted-foreground">Experience (years)</label><Input type="number" value={profileForm.experience_years} onChange={e => setProfileForm(p => ({ ...p, experience_years: parseInt(e.target.value) || 0 }))} /></div>
+              <div><label className="text-[10px] text-muted-foreground">Availability</label><Input value={profileForm.availability} onChange={e => setProfileForm(p => ({ ...p, availability: e.target.value }))} /></div>
+              <div><label className="text-[10px] text-muted-foreground">Hospital</label><Input value={profileForm.hospital} onChange={e => setProfileForm(p => ({ ...p, hospital: e.target.value }))} /></div>
+              <div><label className="text-[10px] text-muted-foreground">Phone</label><Input value={profileForm.phone} onChange={e => setProfileForm(p => ({ ...p, phone: e.target.value }))} /></div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
+              {[
+                { l: "Name", v: docProfile?.name || "Dr. Mehra" },
+                { l: "Specialization", v: docProfile?.specialization || "—" },
+                { l: "Experience", v: docProfile?.experience_years ? `${docProfile.experience_years} years` : "—" },
+                { l: "Availability", v: docProfile?.availability || "Available" },
+                { l: "Hospital", v: docProfile?.hospital || "—" },
+                { l: "Phone", v: docProfile?.phone || "—" },
+              ].map(f => (
+                <div key={f.l} className="rounded-lg bg-teal-900/20 border border-teal-700/30 px-3 py-2">
+                  <p className="text-[10px] text-teal-300 uppercase">{f.l}</p>
+                  <p className="text-xs font-medium text-teal-100 mt-0.5">{f.v}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* Patient Cases */}
         <div className="space-y-4">

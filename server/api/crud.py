@@ -16,6 +16,8 @@ from db import (
     get_checkups, add_checkup, delete_checkup,
     get_ml_results, save_ml_result,
     get_ai_results, save_ai_result,
+    get_doctor_profile, upsert_doctor_profile, get_all_doctor_profiles,
+    get_admin_stats, get_admin_activity_log, get_all_members_with_stats,
 )
 
 bp = Blueprint("crud", __name__, url_prefix="/api")
@@ -200,3 +202,48 @@ def get_notifs():
 def mark_notif_read(nid):
     db_mark_read(nid)
     return jsonify({"status": "read"})
+
+
+# ═══════════════════ DOCTOR PROFILE ═══════════════════
+@bp.route("/doctor-profile/<int:user_id>", methods=["GET"])
+def get_doc_profile(user_id):
+    profile = get_doctor_profile(user_id)
+    return jsonify(profile or {})
+
+
+@bp.route("/doctor-profile/<int:user_id>", methods=["PUT"])
+def update_doc_profile(user_id):
+    d = request.json
+    upsert_doctor_profile(user_id, d)
+    return jsonify({"status": "updated"})
+
+
+@bp.route("/doctor-profiles", methods=["GET"])
+def get_all_doc_profiles():
+    return jsonify(get_all_doctor_profiles())
+
+
+# ═══════════════════ ADMIN PANEL (DB-BACKED) ═══════════════════
+@bp.route("/admin/stats", methods=["GET"])
+def admin_stats():
+    """System-wide stats from real database tables."""
+    return jsonify(get_admin_stats())
+
+
+@bp.route("/admin/users", methods=["GET"])
+def admin_users():
+    """All family members with entry/checkup/ML/AI counts."""
+    return jsonify(get_all_members_with_stats())
+
+
+@bp.route("/admin/logs", methods=["GET"])
+def admin_logs():
+    """Unified activity log from notifications + doctor requests."""
+    limit = int(request.args.get("limit", 50))
+    return jsonify(get_admin_activity_log(limit))
+
+
+@bp.route("/admin/doctors", methods=["GET"])
+def admin_doctors():
+    """All doctor profiles for admin view."""
+    return jsonify(get_all_doctor_profiles())

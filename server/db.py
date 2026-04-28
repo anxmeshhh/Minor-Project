@@ -241,6 +241,19 @@ def _create_tables():
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
+    -- ═══════════════════ MODULE 11: DOCTOR PROFILES ═══════════════════
+    CREATE TABLE IF NOT EXISTS doctor_profiles (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        name VARCHAR(100) NOT NULL,
+        specialization VARCHAR(200),
+        experience_years INT DEFAULT 0,
+        availability VARCHAR(100) DEFAULT 'Available',
+        hospital VARCHAR(200),
+        phone VARCHAR(20),
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    );
+
     -- ═══════════════════ SEED DATA ═══════════════════
     -- Demo patient
     INSERT IGNORE INTO patients (id, name, age, `condition`, role) VALUES (1, 'Riya Sharma', 64, 'Cardiac Monitoring', 'patient');
@@ -265,8 +278,8 @@ def _create_tables():
 
     # Seed health entries, checkups, profile, and initial ML/AI results if empty
     _seed_data()
-    print("[DB] All 15 tables verified (patients, telemetry, alerts, ai_insights, family_groups, family_members, "
-          "health_entries, patient_profiles, checkups, documents, ml_results, ai_results, doctor_requests, notifications + alerts)")
+    print("[DB] All 16 tables verified (patients, telemetry, alerts, ai_insights, family_groups, family_members, "
+          "health_entries, patient_profiles, checkups, documents, ml_results, ai_results, doctor_requests, notifications, doctor_profiles)")
 
 
 # ── write helpers ─────────────────────────────────────────────────────────────
@@ -487,6 +500,124 @@ def upsert_profile(member_id: int, data: dict):
     cur.close(); c.close()
 
 
+# ── Doctor profile helpers ────────────────────────────────────────────────────
+def get_doctor_profile(user_id: int) -> dict | None:
+    c = _conn()
+    cur = c.cursor(dictionary=True)
+    cur.execute("SELECT * FROM doctor_profiles WHERE user_id=%s", (user_id,))
+    row = cur.fetchone()
+    cur.close(); c.close()
+    if row and row.get("updated_at"):
+        row["updated_at"] = str(row["updated_at"])
+    return row
+
+
+def upsert_doctor_profile(user_id: int, data: dict):
+    c = _conn()
+    cur = c.cursor()
+    existing = get_doctor_profile(user_id)
+    if existing:
+        cur.execute(
+            """UPDATE doctor_profiles SET name=%s, specialization=%s, experience_years=%s,
+               availability=%s, hospital=%s, phone=%s WHERE user_id=%s""",
+            (data.get("name"), data.get("specialization"), data.get("experience_years"),
+             data.get("availability"), data.get("hospital"), data.get("phone"), user_id)
+        )
+    else:
+        cur.execute(
+            """INSERT INTO doctor_profiles (user_id, name, specialization, experience_years,
+               availability, hospital, phone)
+               VALUES (%s,%s,%s,%s,%s,%s,%s)""",
+            (user_id, data.get("name"), data.get("specialization"), data.get("experience_years"),
+             data.get("availability"), data.get("hospital"), data.get("phone"))
+        )
+    c.commit()
+    cur.close(); c.close()
+
+
+def get_all_doctor_profiles() -> list[dict]:
+    c = _conn()
+    cur = c.cursor(dictionary=True)
+    cur.execute("SELECT * FROM doctor_profiles ORDER BY id")
+    rows = cur.fetchall()
+    cur.close(); c.close()
+    for r in rows:
+        if r.get("updated_at"): r["updated_at"] = str(r["updated_at"])
+    return rows
+
+
+# ── Admin stats helpers ───────────────────────────────────────────────────────
+def get_admin_stats() -> dict:
+    c = _conn()
+    cur = c.cursor()
+    stats = {}
+    for key, sql in [
+        ("total_patients", "SELECT COUNT(*) FROM patients"),
+        ("total_family_members", "SELECT COUNT(*) FROM family_members"),
+        ("total_family_groups", "SELECT COUNT(*) FROM family_groups"),
+        ("total_health_entries", "SELECT COUNT(*) FROM health_entries"),
+        ("total_checkups", "SELECT COUNT(*) FROM checkups"),
+        ("total_documents", "SELECT COUNT(*) FROM documents"),
+        ("total_ml_results", "SELECT COUNT(*) FROM ml_results"),
+        ("total_ai_results", "SELECT COUNT(*) FROM ai_results"),
+        ("total_doctor_requests", "SELECT COUNT(*) FROM doctor_requests"),
+        ("pending_requests", "SELECT COUNT(*) FROM doctor_requests WHERE status='pending'"),
+        ("total_notifications", "SELECT COUNT(*) FROM notifications"),
+        ("unread_notifications", "SELECT COUNT(*) FROM notifications WHERE is_read=FALSE"),
+        ("total_telemetry", "SELECT COUNT(*) FROM telemetry_readings"),
+        ("total_alerts", "SELECT COUNT(*) FROM alerts"),
+        ("total_doctors", "SELECT COUNT(*) FROM doctor_profiles"),
+    ]:
+        cur.execute(sql)
+        stats[key] = cur.fetchone()[0]
+    cur.close(); c.close()
+    return stats
+
+
+def get_admin_activity_log(limit: int = 50) -> list[dict]:
+    """Combine notifications + doctor requests into a unified activity log."""
+    c = _conn()
+    cur = c.cursor(dictionary=True)
+    cur.execute("""
+        (SELECT 'notification' AS source, type AS sub_type, title, message AS detail, created_at
+         FROM notifications ORDER BY id DESC LIMIT %s)
+        UNION ALL
+        (SELECT 'doctor_request' AS source, status AS sub_type,
+         CONCAT('Request for ', member_name) AS title,
+         COALESCE(ai_summary, CONCAT('ML: ', COALESCE(ml_class,'—'), ' | Risk: ', COALESCE(risk_score,0))) AS detail,
+         created_at
+         FROM doctor_requests ORDER BY id DESC LIMIT %s)
+        ORDER BY created_at DESC LIMIT %s
+    """, (limit, limit, limit))
+    rows = cur.fetchall()
+    cur.close(); c.close()
+    for r in rows:
+        if r.get("created_at"): r["created_at"] = str(r["created_at"])
+    return rows
+
+
+def get_all_members_with_stats() -> list[dict]:
+    """Get all family members with their entry counts for admin view."""
+    c = _conn()
+    cur = c.cursor(dictionary=True)
+    cur.execute("""
+        SELECT fm.id, fm.group_id, fm.name, fm.relation, fm.role,
+               fg.name AS group_name, fm.created_at,
+               (SELECT COUNT(*) FROM health_entries WHERE member_id=fm.id) AS entry_count,
+               (SELECT COUNT(*) FROM checkups WHERE member_id=fm.id) AS checkup_count,
+               (SELECT COUNT(*) FROM ml_results WHERE member_id=fm.id) AS ml_count,
+               (SELECT COUNT(*) FROM ai_results WHERE member_id=fm.id) AS ai_count
+        FROM family_members fm
+        LEFT JOIN family_groups fg ON fm.group_id = fg.id
+        ORDER BY fm.id
+    """)
+    rows = cur.fetchall()
+    cur.close(); c.close()
+    for r in rows:
+        if r.get("created_at"): r["created_at"] = str(r["created_at"])
+    return rows
+
+
 # ── Seed demo data (only if empty) ───────────────────────────────────────────
 def _seed_data():
     c = _conn()
@@ -563,6 +694,11 @@ def _seed_data():
         cur.execute("INSERT INTO notifications (group_id, member_id, type, title, message) VALUES (%s,%s,%s,%s,%s)",
                     (gid, mid, ntype, title, msg))
 
+    # Seed doctor profile
+    cur.execute("""INSERT IGNORE INTO doctor_profiles
+        (user_id, name, specialization, experience_years, availability, hospital, phone)
+        VALUES (2, 'Dr. Mehra', 'Cardiology', 15, 'Available', 'Apollo Hospital, Delhi', '+91-9988776655')""")
+
     c.commit()
     cur.close(); c.close()
-    print("[DB] Seeded demo data: 15 health entries, 1 profile, 3 checkups, 1 ML result, 1 AI result, 1 doctor request, 3 notifications")
+    print("[DB] Seeded demo data: 15 health entries, 1 profile, 3 checkups, 1 ML result, 1 AI result, 1 doctor request, 3 notifications, 1 doctor profile")

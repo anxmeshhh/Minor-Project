@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import {
   Heart, Droplets, Thermometer, Zap, AlertTriangle, Pill, ClipboardList,
   PhoneCall, ActivitySquare, Wifi, WifiOff, Brain, Sparkles, Calendar,
-  Users, ChevronRight, CheckCircle2, Clock, Shield
+  Users, ChevronRight, CheckCircle2, Clock, Shield, Bell, FileText
 } from "lucide-react";
 import { triggerGloveAnomaly } from "@/lib/gloveData";
 import { useVitalsCtx } from "@/context/VitalsContext";
@@ -52,7 +52,7 @@ const Patient = () => {
   const [anomalyOpen, setAnomalyOpen] = useState(false);
 
   // Medical profile from shared HealthDataContext (same data as Family Hub)
-  const { getSelf, getAllForAi, family, addEntry } = useHealthData();
+  const { getSelf, getAllForAi, family, addEntry, notifications, markRead, unreadCount } = useHealthData();
   const selfData = getSelf();
   const aiInput = getAllForAi(selfData.id);
 
@@ -437,6 +437,95 @@ const Patient = () => {
                 </div>
               </div>
             ))}
+          </div>
+        </section>
+
+        {/* Notifications Panel */}
+        <section className="rounded-xl border border-blue-700/30 bg-blue-950/10 p-5 shadow-card">
+          <div className="flex items-center gap-2 mb-4">
+            <Bell className="h-4 w-4 text-blue-400" />
+            <h2 className="font-semibold">Notifications</h2>
+            {unreadCount > 0 && (
+              <span className="h-5 w-5 rounded-full bg-critical text-[10px] text-white grid place-items-center animate-pulse">{unreadCount}</span>
+            )}
+            <span className="text-xs text-muted-foreground ml-auto">From DB · {notifications.length} total</span>
+          </div>
+          {notifications.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">No notifications yet.</p>
+          ) : (
+            <div className="space-y-2 max-h-48 overflow-auto">
+              {notifications.slice(0, 6).map(n => (
+                <div key={n.id} onClick={() => markRead(n.id)}
+                  className={cn("flex items-start gap-2 rounded-lg px-3 py-2 border cursor-pointer transition-all",
+                    n.is_read ? "border-border/40 bg-panel opacity-60" : "border-blue-700/40 bg-blue-900/10")}>
+                  {n.type === "doctor_response" && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 mt-0.5 shrink-0" />}
+                  {n.type === "ai_scan" && <Brain className="h-3.5 w-3.5 text-violet-400 mt-0.5 shrink-0" />}
+                  {n.type === "alert" && <AlertTriangle className="h-3.5 w-3.5 text-amber-400 mt-0.5 shrink-0" />}
+                  {n.type === "member_update" && <Users className="h-3.5 w-3.5 text-blue-400 mt-0.5 shrink-0" />}
+                  {n.type === "appointment" && <Calendar className="h-3.5 w-3.5 text-blue-400 mt-0.5 shrink-0" />}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium">{n.title}</p>
+                    <p className="text-[10px] text-muted-foreground truncate">{n.message}</p>
+                  </div>
+                  <span className="text-[9px] text-muted-foreground shrink-0">{n.created_at}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* ML + AI Results History */}
+        <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* ML Results from DB */}
+          <div className="rounded-xl border border-violet-700/30 bg-violet-950/10 p-5 shadow-card">
+            <div className="flex items-center gap-2 mb-3">
+              <Brain className="h-4 w-4 text-violet-400" />
+              <h2 className="font-semibold text-sm">ML Results</h2>
+              <span className="text-[10px] text-muted-foreground">Pattern Detection · from ml_results table</span>
+            </div>
+            {selfData.mlResults.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">No ML predictions yet. Run AI scan from Family Hub.</p>
+            ) : (
+              <div className="space-y-2 max-h-48 overflow-auto">
+                {selfData.mlResults.slice(0, 5).map(ml => (
+                  <div key={ml.id} className="rounded-lg bg-violet-900/20 border border-violet-700/30 px-3 py-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium capitalize text-violet-100">{ml.prediction.replace('_',' ')}</span>
+                      <span className="text-xs text-violet-300">{(ml.confidence * 100).toFixed(1)}%</span>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">Risk: {ml.risk_score}/100 · {ml.input_summary} · {ml.created_at}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* AI Results from DB */}
+          <div className="rounded-xl border border-cyan-700/30 bg-cyan-950/10 p-5 shadow-card">
+            <div className="flex items-center gap-2 mb-3">
+              <Sparkles className="h-4 w-4 text-cyan-400" />
+              <h2 className="font-semibold text-sm">AI Results</h2>
+              <span className="text-[10px] text-muted-foreground">Reasoning + Advice · from ai_results table</span>
+            </div>
+            {selfData.aiResults.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">No AI analyses yet. Run AI scan from Family Hub.</p>
+            ) : (
+              <div className="space-y-2 max-h-48 overflow-auto">
+                {selfData.aiResults.slice(0, 5).map(ai => (
+                  <div key={ai.id} className="rounded-lg bg-cyan-900/20 border border-cyan-700/30 px-3 py-2">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className={cn("text-xs px-2 py-0.5 rounded-full border font-medium",
+                        ai.urgency === 'safe' ? 'bg-emerald-500/15 text-emerald-400 border-emerald-700/40' :
+                        ai.urgency === 'visit' ? 'bg-amber-500/15 text-amber-400 border-amber-700/40' :
+                        'bg-red-500/15 text-red-400 border-red-700/40')}>{ai.urgency}</span>
+                      {ai.doctor_suggestion && <span className="text-[10px] text-cyan-300">{ai.doctor_suggestion}</span>}
+                    </div>
+                    <p className="text-xs text-cyan-100/80 line-clamp-2">{ai.advice}</p>
+                    <p className="text-[10px] text-muted-foreground mt-1">{ai.created_at}</p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </section>
 

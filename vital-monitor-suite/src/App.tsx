@@ -26,6 +26,8 @@ import NotFound from "./pages/NotFound.tsx";
 import DoctorDiscovery from "./pages/DoctorDiscovery";
 import AdminDashboard from "./pages/AdminDashboard";
 import DemoPanel from "./pages/DemoPanel";
+import Profile from "./pages/Profile";
+import ModuleDemo from "./pages/ModuleDemo";
 
 const queryClient = new QueryClient();
 
@@ -42,6 +44,7 @@ function Shell() {
         {/* ── Public routes — no auth required ── */}
         <Route path="/" element={<DemoPanel />} />          {/* Landing = Simulation Demo */}
         <Route path="/demo" element={<DemoPanel />} />
+        <Route path="/modules" element={<ModuleDemo />} />   {/* Module-by-module proof */}
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/unauthorized" element={<Unauthorized />} />
@@ -52,6 +55,14 @@ function Shell() {
           element={
             <ProtectedRoute allow={["patient"]}>
               <Patient />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute allow={["patient"]}>
+              <Profile />
             </ProtectedRoute>
           }
         />
