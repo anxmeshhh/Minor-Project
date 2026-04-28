@@ -108,7 +108,7 @@ const Patient = () => {
       else { setAiInsight("All vitals within normal parameters. Continue monitoring."); setAiUrgency("safe"); }
     }
     setAiLoading(false);
-  }, [risk, aiInput, checkups]);
+  }, [risk, aiInput, selfData]);
 
   const runGloveCheckup = () => {
     setCheckupRunning(true);

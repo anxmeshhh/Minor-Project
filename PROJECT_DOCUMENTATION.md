@@ -1,400 +1,426 @@
-# VitalGlove — Complete System Documentation
+# 🧤 VitalGlove — Intelligent Healthcare Monitoring Platform
 
-> A smart health monitoring glove that tracks your vitals in real-time, uses Machine Learning to detect health conditions, and connects patients, families, and doctors on one shared platform.
-
----
-
-## What Is VitalGlove?
-
-VitalGlove is a wearable health monitoring system built around a smart glove. The glove uses sensors to continuously measure:
-
-- **Heart Rate** (beats per minute)
-- **Blood Oxygen (SpO2)** (percentage)
-- **Body Temperature** (in Celsius)
-- **Motion / Falls** (using accelerometer)
-
-These readings are sent wirelessly to a server, which runs Machine Learning and AI to detect health problems, alert families, and suggest the right doctor — all in real time.
+> **"A collaborative health system where patient + family + sensors feed data → ML detects patterns → AI explains → doctor acts → everything is stored and traceable."**
 
 ---
 
-## How the System Works (Step by Step)
-
-### Step 1: Patient Opens the App
-
-The patient opens `http://localhost:8080`. The first page is the **Demo Panel**, which shows 9 clinical simulations (Normal, Hypoxia, Tachycardia, Fall, Fever, etc.). This is the starting point for demonstrating the system.
-
-### Step 2: Sign In
-
-The patient clicks "Sign In" and logs in with their credentials. The system supports 3 roles:
-
-| Role | Login | What They See |
-|------|-------|---------------|
-| Patient | `patient@vitalglove.dev` / `patient123` | Live vitals, AI analysis, meds, family, SOS |
-| Doctor | `doctor@vitalglove.dev` / `doctor123` | Patient requests, accept/reject, vitals, ML data |
-| Admin | `admin@vitalglove.dev` / `admin123` | All users, system logs, analytics |
-
-### Step 3: Sync Glove
-
-On the Patient Dashboard, the patient clicks **"Sync Glove"**. An animation shows:
-1. "Connecting..." (with pulse animation)
-2. "Syncing data..."
-3. "Glove Synced ✓"
-
-After syncing, the dashboard shows live vitals from the glove (or simulation).
-
-### Step 4: Live Monitoring
-
-The dashboard displays 4 vital cards:
-- ❤️ Heart Rate (BPM)
-- 🩸 SpO2 (%)
-- 🌡 Temperature (°C)
-- ⚡ G-Force / Fall Detection
-
-Plus sparkline trend charts and a risk score (0-100).
-
-### Step 5: AI Health Assessment
-
-The patient clicks **"Analyze Now"**. This triggers the full analysis pipeline:
-
-```
-What happens behind the scenes:
-
-1. ML Model (RandomForest) classifies the vitals
-   → Example: "tachycardia" (99% confidence)
-
-2. Rule-based engine calculates risk score
-   → Example: 65/100 (Caution)
-
-3. Groq AI (LLaMA3-70B) receives EVERYTHING:
-   - Glove vitals
-   - ML prediction
-   - Risk score
-   - Current medications (Metoprolol, Aspirin...)
-   - Reported symptoms (chest tightness, dizziness...)
-   - Medical history (Hypertension, Diabetes, Previous MI)
-   - Active prescriptions (with dose and timing)
-   - Family health (Father: cardiac arrest at 68)
-   - Doctor notes (BP 140/90, lifestyle changes advised)
-
-4. AI returns:
-   → Urgency: Safe / Need Doctor Visit / Emergency
-   → Explanation in simple language
-   → Recommendations (3 steps)
-   → Suggested doctor specialty (Cardiologist, Pulmonologist...)
-```
-
-**Important**: The AI does NOT just look at glove data. It considers the full patient picture — medications, history, family health, and doctor notes — to make its assessment.
-
-### Step 6: Family Members See Everything
-
-Family members connected to the patient can see:
-- Live vitals and alerts
-- AI urgency status (Safe / Visit / Emergency)
-- Activity feed
-
-Family members are managed through the **Family Health Hub**:
-- Create a family group (e.g., "The Sharma Family")
-- Quick-add members by name and relation
-- The creator is automatically the **Admin** of the group
-- Other members are tagged as **Member**
-
-### Step 7: Booking a Doctor
-
-Based on the AI suggestion (e.g., "Visit a Cardiologist"), the patient can:
-
-1. Click **"Find Cardiologist (AI Recommended)"**
-2. See doctors on a **map view** with match scores
-3. Filter by specialty (8 types available)
-4. See distance, fees, availability, and experience
-5. Click **"Request Consultation"** → sends full health profile to doctor
-6. Or click **"Book Now"** for immediate appointment
-
-### Step 8: Doctor Reviews and Decides
-
-The doctor sees incoming patient requests with:
-- Patient symptoms and medications
-- ML classification (e.g., "tachycardia")
-- AI urgency level (Safe / Visit / Emergency)
-- Heart rate trend sparkline
-- Risk level badge
-
-The doctor can:
-- ✅ **Accept** → patient becomes their active patient
-- ❌ **Reject** → patient can request another doctor
-
-### Step 9: Admin Monitors Everything
-
-The admin dashboard shows:
-- **System Logs** (filterable by Info / Alert / Action)
-  - ML predictions, risk alerts, doctor actions, auth events
-  - Family additions, escalations, database operations
-- **Patient Fleet** — all patients with glove status
-- **Doctors Directory** — all doctors with specialties
-- **Analytics** — weekly charts for active gloves and alerts
-
----
-
-## The ML Pipeline (How Machine Learning Works)
-
-### What the Model Does
-
-The ML model takes 9 sensor features from the glove and classifies the reading into one of 9 conditions:
-
-| # | Condition | What It Means | Example Values |
-|---|-----------|---------------|----------------|
-| 1 | Normal | Patient is fine | HR 72, SpO2 98, Temp 36.5 |
-| 2 | Hypoxia | Low blood oxygen | SpO2 dropping below 90% |
-| 3 | Fall | Patient fell down | G-force spike > 2.5G |
-| 4 | Tachycardia | Heart beating too fast | HR > 120 BPM |
-| 5 | Fever | High body temperature | Temp > 38°C |
-| 6 | Bradycardia | Heart beating too slow | HR < 50 BPM |
-| 7 | Sleep Apnea | Breathing stops during sleep | SpO2 dips in cycles |
-| 8 | Arrhythmia | Irregular heartbeat | HR jumping randomly |
-| 9 | Exercise | Physical activity | HR elevated + motion |
-
-### How We Trained It
-
-1. **Data Generation**: The simulation engine creates 5,400 labeled samples (600 per condition) with realistic medical values
-2. **Algorithm Comparison**: We test 5 different ML algorithms:
-
-| Algorithm | Accuracy | Training Time |
-|-----------|----------|---------------|
-| **Random Forest** | **95.96%** | 0.8 seconds |
-| Gradient Boosting | 95.33% | 45.2 seconds |
-| MLP Neural Network | 94.20% | 23.4 seconds |
-| SVM (RBF kernel) | 93.28% | 3.2 seconds |
-| KNN (k=7) | 91.07% | 0.2 seconds |
-
-3. **Winner**: Random Forest — highest accuracy, fastest training, and provides interpretable feature importance scores
-
-### Where ML Is Used in the System
-
-| Location | What Happens |
-|----------|-------------|
-| Every `/api/latest` response | ML classifies the current reading in < 1ms |
-| DemoPanel | Shows "ML: normal (95.4%)" with confidence bar |
-| Patient Dashboard | ML class feeds into urgency calculation |
-| Doctor Dashboard | ML class shown per patient for clinical decision support |
-| AI Analysis | ML prediction is sent to Groq AI as part of the prompt |
-
-### Features the Model Uses (9 inputs)
-
-```
-heart_rate, spo2, temperature, g_force, fall_detected,
-accel_x, accel_y, accel_z, risk_score
-```
-
----
-
-## The AI Pipeline (How Groq AI Works)
-
-### What Groq AI Does
-
-Groq AI (LLaMA3-70B model) provides **natural language health insights**. It receives the complete patient profile and returns advice a patient can understand.
-
-### What Gets Sent to AI
-
-```
-=== GLOVE DATA ===
-Heart Rate, SpO2, Temperature, G-Force, Fall status
-
-=== ML OUTPUT ===
-Predicted condition + confidence + risk score
-
-=== PATIENT PROFILE ===
-Current medications and doses
-Reported symptoms
-Full medical history
-Active prescriptions
-Doctor's notes
-
-=== FAMILY CONTEXT ===
-Family member health conditions
-```
-
-### What AI Returns
-
-- **Urgency Level**: Safe / Need Doctor Visit / Emergency
-- **Holistic Assessment**: What the combined data suggests
-- **Key Concerns**: Medication interactions or risk factors
-- **Recommendations**: 3 specific actionable steps
-- **Doctor Specialty**: Which specialist to see
-- **Family Alert**: Should family be notified?
-
----
-
-## Research Gaps Solved
-
-This project addresses 7 research gaps found in existing health monitoring systems:
-
-| Gap | Problem in Existing Systems | How VitalGlove Solves It |
-|-----|---------------------------|--------------------------|
-| **G1** | No real-time end-to-end deployment | ESP32 glove with live WiFi data transfer |
-| **G2** | No patient-facing interface | Full patient dashboard with vitals, meds, SOS |
-| **G3** | Scalability not addressed | MySQL + Flask + connection pooling |
-| **G4** | No emergency escalation | 3-tier: Doctor → Family → Ambulance (108) |
-| **G5** | Data privacy ignored | Role-based access control (patient/doctor/admin) |
-| **G6** | No edge + cloud hybrid | ESP32 runs thresholds locally + Cloud runs ML + AI |
-| **G7** | No doctor/EHR integration | Doctor dashboard with accept/reject + AI insights |
-
----
-
-## System Architecture (Simple View)
-
-```
-┌──────────────┐          ┌──────────────────┐
-│  Smart Glove │  WiFi    │  Flask Server    │
-│  (ESP32)     │ ──────→  │  (Port 5001)     │
-│              │          │                  │
-│  Sensors:    │  ←────── │  Runs:           │
-│  HR, SpO2,   │  Glove   │  • ML Model      │
-│  Temp, Accel │  Commands│  • Risk Engine   │
-└──────────────┘          │  • Groq AI       │
-                          │  • MySQL DB      │
-                          └────────┬─────────┘
-                                   │
-                          ┌────────▼─────────┐
-                          │  React Frontend  │
-                          │  (Port 8080)     │
-                          │                  │
-                          │  Pages:          │
-                          │  • Demo Panel    │
-                          │  • Patient       │
-                          │  • Doctor        │
-                          │  • Admin         │
-                          │  • Family Hub    │
-                          │  • Emergency     │
-                          └──────────────────┘
-```
-
----
-
-## How to Run the System
-
-### Prerequisites
-- Python 3.10 or higher
-- Node.js 18 or higher
-- MySQL 8.0 (installed and running)
-
-### Step 1: Start the Backend
-
-```bash
-cd server
-
-# Create .env file with your credentials
-# GROQ_API_KEY=your_key_here
-# MYSQL_HOST=localhost
-# MYSQL_USER=root
-# MYSQL_PASSWORD=your_password
-# MYSQL_DB=vitalglove
-
-pip install -r requirements.txt    # Install Python packages
-python ml/trainer.py               # Train the ML model (takes ~30 seconds)
-python app.py                      # Start Flask server on port 5001
-```
-
-The database `vitalglove` is created automatically when you start the server.
-
-### Step 2: Start the Frontend
-
-```bash
-cd vital-monitor-suite
-npm install --legacy-peer-deps      # Install packages
-npm run dev                         # Start on port 8080
-```
-
-### Step 3: Open the System
-
-1. Open `http://localhost:8080` in your browser
-2. You land on the **Demo Panel** — select any scenario
-3. Click **Sign In** to enter as Patient, Doctor, or Admin
-4. Explore the full system
-
----
-
-## Technology Stack
-
-| Layer | Technology | Purpose |
-|-------|-----------|---------|
-| Hardware | ESP32-C3 + MAX30102 + DS18B20 + MPU6050 | Sensor data collection |
-| Backend | Python Flask + Flask-SocketIO | API server |
-| Database | MySQL 8.0 | Data storage |
-| ML | scikit-learn (RandomForest) | Health condition classification |
-| AI | Groq API (LLaMA3-70B) | Natural language health insights |
-| Frontend | React + Vite + TypeScript | User interface |
-| Styling | Tailwind CSS + Framer Motion | UI design and animations |
-
----
-
-## File Structure
+## 📂 Project Structure
 
 ```
 GLOVE FINAL/
-├── server/                          # Backend
-│   ├── app.py                       # Main Flask entry point
-│   ├── db.py                        # Database auto-creation
-│   ├── config.py                    # All thresholds and settings
-│   ├── api/
-│   │   ├── vitals.py                # GET /api/latest (with ML data)
-│   │   ├── ai_routes.py             # POST /api/ai/analyze (full pipeline)
-│   │   ├── demo.py                  # Scenario control
-│   │   └── emergency.py             # SOS and escalation
-│   ├── core/
-│   │   ├── risk.py                  # Risk score calculator (0-100)
-│   │   ├── alerts.py                # 3-tier escalation logic
-│   │   └── ai.py                    # Groq API integration
-│   ├── ml/
-│   │   ├── trainer.py               # Train and compare 5 algorithms
-│   │   ├── predictor.py             # Real-time ML inference
-│   │   ├── model.pkl                # Saved model file
-│   │   └── model_meta.json          # Model accuracy and metadata
-│   └── simulation/
-│       ├── engine.py                # Scenario registry
-│       └── scenarios/               # 9 clinical simulations
 │
-├── vital-monitor-suite/             # Frontend
+├── 📄 README.md                     # Project overview & setup instructions
+├── 📄 PROJECT_DOCUMENTATION.md      # ← You are here (complete technical docs)
+├── 📄 LICENSE                       # MIT License
+├── 📄 .gitignore                    # Git ignore rules
+│
+├── 🖥️ server/                       # Flask Backend (Python)
+│   ├── app.py                       # Entry point — Flask + SocketIO + Blueprint wiring
+│   ├── config.py                    # Environment config (ports, CORS, secrets)
+│   ├── db.py                        # MySQL schema (15 tables), seed data, read/write helpers
+│   ├── server_db.py                 # CRUD database functions (family, entries, requests, notifs)
+│   ├── requirements.txt             # Python dependencies
+│   ├── .env                         # 🔒 Secret keys (gitignored)
+│   ├── .env.example                 # Template for .env setup
+│   │
+│   ├── api/                         # REST API Routes (Blueprints)
+│   │   ├── __init__.py
+│   │   ├── crud.py                  # ⭐ Full CRUD: family, health, profile, checkups, ML/AI results, doctor, notifs
+│   │   ├── ai_routes.py             # AI+ML combined analysis pipeline (Groq + RandomForest)
+│   │   ├── ml_routes.py             # Standalone ML prediction endpoint
+│   │   ├── telemetry.py             # ESP32 serial data ingestion
+│   │   ├── vitals.py                # Live vitals polling (simulation/device)
+│   │   ├── demo.py                  # Demo scenario control
+│   │   ├── patients.py              # Patient listing
+│   │   └── emergency.py             # SOS/emergency protocol
+│   │
+│   ├── core/                        # Business Logic
+│   │   ├── __init__.py
+│   │   ├── ai.py                    # Groq LLaMA3-70B integration (system prompt, API calls)
+│   │   ├── risk.py                  # Rule-based risk scoring (0-100 scale)
+│   │   └── alerts.py                # Escalation tier evaluation (0-4 tiers)
+│   │
+│   ├── ml/                          # Machine Learning Module
+│   │   ├── __init__.py
+│   │   ├── trainer.py               # RandomForest training script (95.96% accuracy)
+│   │   ├── predictor.py             # Live prediction from trained model
+│   │   ├── model.pkl                # Trained RandomForest model binary
+│   │   ├── model_meta.json          # Training metadata & accuracy metrics
+│   │   └── algorithm_comparison.json # RF vs SVM vs KNN vs DT comparison
+│   │
+│   └── simulation/                  # Glove Simulation Engine
+│       ├── __init__.py
+│       ├── engine.py                # Vital sign generator with noise models
+│       └── scenarios/               # Clinical scenarios (normal, tachycardia, hypoxia, fever, fall)
+│           ├── __init__.py
+│           ├── normal.py
+│           ├── tachycardia.py
+│           ├── hypoxia.py
+│           ├── fever.py
+│           └── fall.py
+│
+├── 🌐 vital-monitor-suite/          # React Frontend (TypeScript + Vite)
+│   ├── package.json
+│   ├── tsconfig.json
+│   ├── vite.config.ts
+│   ├── index.html
+│   │
 │   └── src/
-│       ├── pages/
-│       │   ├── DemoPanel.tsx         # Landing page with simulations
-│       │   ├── Patient.tsx           # Patient dashboard
-│       │   ├── DoctorDashboard.tsx   # Doctor with accept/reject
-│       │   ├── AdminDashboard.tsx    # Admin with system logs
-│       │   ├── DoctorDiscovery.tsx   # Find and book doctors
-│       │   ├── FamilyHub.tsx         # Family health center
-│       │   ├── FamilyMembers.tsx     # Family group management
-│       │   └── Emergency.tsx         # Emergency escalation
-│       ├── context/
-│       │   ├── AuthContext.tsx       # Login and role management
-│       │   └── VitalsContext.tsx     # Real-time vitals state
-│       └── components/
-│           ├── VitalCard.tsx         # Animated vital display
-│           └── Sparkline.tsx         # SVG trend chart
+│       ├── main.tsx                 # React entry point
+│       ├── App.tsx                  # Router + Provider tree (Auth → Connection → Vitals → HealthData)
+│       ├── App.css                  # App-level styles
+│       ├── index.css                # Design system tokens (colors, fonts, gradients)
+│       │
+│       ├── context/                 # React Context Providers (Global State)
+│       │   ├── AuthContext.tsx       # Login/logout, role-based auth (patient/doctor/admin)
+│       │   ├── ConnectionContext.tsx # WebSocket connection status
+│       │   ├── VitalsContext.tsx     # Live vitals polling from backend
+│       │   └── HealthDataContext.tsx # ⭐ MAIN: All DB data (family, entries, checkups, ML/AI, requests, notifs)
+│       │
+│       ├── pages/                   # Application Pages
+│       │   ├── DemoPanel.tsx        # Landing — simulation control + live vitals + scenario switching
+│       │   ├── Patient.tsx          # ⭐ Patient dashboard — vitals + AI/ML analysis + meds + symptoms
+│       │   ├── FamilyHub.tsx        # ⭐ Family command center — collaborative health input (CRUD)
+│       │   ├── DoctorDashboard.tsx  # ⭐ Doctor case review — 6-tab patient view + respond
+│       │   ├── Doctor.tsx           # Individual patient detailed view
+│       │   ├── DoctorDiscovery.tsx  # Find-a-doctor specialist search
+│       │   ├── AdminDashboard.tsx   # Admin monitoring panel
+│       │   ├── Emergency.tsx        # SOS emergency protocol
+│       │   ├── FamilyMembers.tsx    # Member management
+│       │   ├── Documents.tsx        # Document upload/view
+│       │   ├── Appointments.tsx     # Appointment scheduling
+│       │   ├── Medications.tsx      # Medication tracking
+│       │   ├── Settings.tsx         # User preferences
+│       │   ├── Login.tsx            # Authentication page
+│       │   ├── Signup.tsx           # Registration page
+│       │   ├── Unauthorized.tsx     # Access denied
+│       │   └── NotFound.tsx         # 404 page
+│       │
+│       ├── components/              # Reusable UI Components
+│       │   ├── NavBar.tsx           # Navigation bar with role-based menu
+│       │   ├── NavLink.tsx          # Active-aware navigation link
+│       │   ├── ProtectedRoute.tsx   # Role-based route guard
+│       │   ├── Sparkline.tsx        # SVG sparkline chart (vitals trends)
+│       │   ├── VitalCard.tsx        # Vital sign display card
+│       │   └── ui/                  # ShadcnUI primitives (button, card, badge, tabs, etc.)
+│       │
+│       ├── lib/                     # Utilities
+│       │   ├── utils.ts             # cn() classname helper
+│       │   ├── gloveData.ts         # Glove anomaly trigger helper
+│       │   └── familyHealth.ts      # Family health data types
+│       │
+│       ├── types/                   # TypeScript Type Definitions
+│       │   └── vitals.ts            # Vital reading types, risk helpers, alert reasons
+│       │
+│       ├── hooks/                   # Custom React Hooks
+│       │   └── use-toast.ts
+│       │
+│       └── test/                    # Test utilities
 │
-├── glove.cpp                        # ESP32 firmware
-├── README.md                        # Technical documentation
-└── research/
-    ├── RESEARCH_ANALYSIS.md         # Research paper content
-    └── charts/                      # ML comparison charts
+├── 🔧 hardware/                     # ESP32 Firmware
+│   ├── glove.cpp                    # Full Arduino firmware (MAX30102 + MLX90614 + MPU6050)
+│   └── README.md                    # Hardware setup instructions
+│
+└── 📊 research/                     # Research & Analysis
+    ├── RESEARCH_ANALYSIS.md         # Literature review & gap analysis
+    ├── SYSTEM_ANALYSIS.md           # System architecture analysis
+    ├── generate_charts.py           # Chart generation script
+    └── charts/                      # Generated research visualizations
 ```
 
 ---
 
-## Demo Flow (For Judges)
+## 🗄️ Database Schema (15 Tables)
 
-The recommended demonstration order:
+All tables are **auto-created** on server startup via `db.py → _create_tables()`.
 
-1. **Open Demo Panel** → Show 9 simulations, switch between them, show live vitals changing
-2. **Switch to Hypoxia** → Watch SpO2 drop, ML detects "hypoxia", risk score climbs
-3. **Sign in as Patient** → Show glove sync animation, vitals dashboard
-4. **Click Analyze Now** → Show ML + AI combined analysis with all 8 data sources
-5. **Show AI suggests Pulmonologist** → Click "Find Doctor"
-6. **Doctor Discovery** → Show map, filter by specialty, request consultation
-7. **Sign in as Doctor** → Show pending requests, accept a patient
-8. **Sign in as Admin** → Show system logs with ML predictions and user actions
-9. **Family Hub** → Show family group, add member by name
-10. **Emergency SOS** → Trigger SOS, show escalation
+| # | Table | Module | Purpose |
+|---|-------|--------|---------|
+| 1 | `patients` | Users | User accounts (patient/doctor/admin roles) |
+| 2 | `telemetry_readings` | Sensor Data | Raw HR, SpO₂, Temp, GForce from glove |
+| 3 | `alerts` | Alerts | Triggered alert records with severity |
+| 4 | `ai_insights` | Legacy AI | Quick AI insights (backward compat) |
+| 5 | `family_groups` | Family Hub | Family group definitions |
+| 6 | `family_members` | Family Hub | Members within each group |
+| 7 | `health_entries` | Health Data | Unified entries: symptoms, meds, history, prescriptions, doctor notes |
+| 8 | `patient_profiles` | Profile | Age, gender, blood group, allergies, emergency contact |
+| 9 | `checkups` | Checkups | Scheduled/completed checkups with dates |
+| 10 | `documents` | Documents | Uploaded PDFs/images (file paths) |
+| 11 | `ml_results` | **ML Pipeline** | RandomForest predictions with confidence scores |
+| 12 | `ai_results` | **AI Pipeline** | Groq AI advice, urgency, timeline, doctor suggestions |
+| 13 | `doctor_requests` | Doctor System | Full lifecycle: pending → accepted (with response) |
+| 14 | `notifications` | Notifications | System alerts visible to patient + family |
+
+> **Key Design:** `ml_results` and `ai_results` are **separate tables** — ML detects patterns, AI explains them. This separation is intentional and research-aligned.
 
 ---
 
-*Built as part of an academic research project on IoT-based Smart Health Monitoring Systems.*
-*Technologies: ESP32, Flask, React, MySQL, scikit-learn (RandomForest), Groq AI (LLaMA3-70B)*
+## 🔄 Complete Data Pipeline
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    INPUT LAYER (NOT Dashboard)                   │
+│                                                                 │
+│  👤 User Profile        👨‍👩‍👧 Family Hub        🧤 Glove Sensors    │
+│  ├─ Medications         ├─ Observations         ├─ Heart Rate    │
+│  ├─ Checkups            ├─ Shared symptoms      ├─ SpO₂          │
+│  ├─ Documents           ├─ Emergency notes      ├─ Temperature   │
+│  └─ Prescriptions       └─ Health updates       └─ Motion/Fall   │
+│                                                                 │
+│                      ALL → MySQL Database                       │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    PROCESSING LAYER                              │
+│                                                                 │
+│  🔍 ML Pipeline (SEPARATE)          🧠 AI Pipeline (SEPARATE)   │
+│  ├─ Input: Sensor data              ├─ Input: Profile + Family  │
+│  ├─ Algorithm: RandomForest         │   + ML output + Rules     │
+│  ├─ Output: Classification          ├─ Engine: Groq LLaMA3-70B │
+│  │   (tachycardia, hypoxia,         ├─ Output: Advice, urgency, │
+│  │    fall, normal, etc.)           │   timeline, specialist    │
+│  ├─ Confidence: 0-100%              │                           │
+│  └─ Stored: ml_results table        └─ Stored: ai_results table │
+│                                                                 │
+│  ⚖️ Rule Engine                                                 │
+│  ├─ Risk score: 0-100                                           │
+│  └─ Escalation: Tier 0-4                                        │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    ACTION LAYER                                  │
+│                                                                 │
+│  👨‍⚕️ Doctor Dashboard                 🔔 Notification System     │
+│  ├─ Receives: Full patient case     ├─ Patient notified         │
+│  ├─ Views: 6-tab data review        ├─ Family notified          │
+│  ├─ Actions: Notes, prescriptions,  └─ Updates in Family Hub    │
+│  │   appointments, urgency marks                                │
+│  └─ Response: Flows back to DB                                  │
+│     → patient record updated                                    │
+│     → family sees notification                                  │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    OUTPUT LAYER (Dashboard)                      │
+│                                                                 │
+│  📊 Patient Dashboard = READ-ONLY VISUALIZATION                 │
+│  ├─ Live vitals (from sensor table)                             │
+│  ├─ Medications (from DB)                                       │
+│  ├─ Checkups (from DB)                                          │
+│  ├─ ML prediction (from DB)                                     │
+│  ├─ AI advice (from DB)                                         │
+│  └─ Everything dynamic — ZERO hardcoding                        │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 🔌 REST API Reference
+
+### Family & Members
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/family` | Get family group + all members |
+| POST | `/api/family/members` | Add a new member |
+| DELETE | `/api/family/members/:id` | Remove a member |
+
+### Health Entries (CRUD)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/health/:memberId` | Get all entries grouped by category |
+| GET | `/api/health/:memberId/:category` | Get entries for one category |
+| POST | `/api/health/:memberId/:category` | Create new entry |
+| PUT | `/api/health/entry/:entryId` | Update entry text |
+| DELETE | `/api/health/entry/:entryId` | Delete entry |
+
+### Patient Profile
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/profile/:memberId` | Get patient profile |
+| PUT | `/api/profile/:memberId` | Create or update profile |
+
+### Checkups
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/checkups/:memberId` | Get all checkups |
+| POST | `/api/checkups/:memberId` | Add checkup |
+| DELETE | `/api/checkups/:id` | Delete checkup |
+
+### ML Results (Separate Module)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/ml-results/:memberId` | Get ML prediction history |
+| POST | `/api/ml-results/:memberId` | Store new ML prediction |
+
+### AI Results (Separate Module)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/ai-results/:memberId` | Get AI advice history |
+| POST | `/api/ai-results/:memberId` | Store new AI result |
+
+### AI + ML Analysis
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/ai/analyze` | Full pipeline: ML → Rules → AI → store results |
+| POST | `/api/ai/insight` | Quick Groq insight |
+| GET | `/api/ai/insights` | Insight history |
+
+### Doctor System
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/doctor-requests` | All doctor requests |
+| POST | `/api/doctor-requests` | Create patient request |
+| POST | `/api/doctor-requests/:id/respond` | Doctor responds (notes + prescription) |
+
+### Notifications
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/notifications` | Get all notifications |
+| POST | `/api/notifications/:id/read` | Mark as read |
+
+### Vitals & Telemetry
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/vitals` | Latest simulated/live vitals |
+| GET | `/api/latest` | Latest DB reading |
+| POST | `/api/telemetry` | Ingest ESP32 serial data |
+| GET | `/api/demo/status` | Current simulation scenario |
+
+---
+
+## 🧠 ML vs AI — Why Separate?
+
+| Aspect | ML Pipeline | AI Pipeline |
+|--------|-------------|-------------|
+| **Purpose** | Pattern detection | Reasoning & explanation |
+| **Algorithm** | RandomForest (95.96%) | Groq LLaMA3-70B |
+| **Input** | Sensor data (HR, SpO₂, Temp, Motion) | Profile + Family + ML output + Rules |
+| **Output** | Classification + Confidence % | Advice + Urgency + Timeline + Specialist |
+| **DB Table** | `ml_results` | `ai_results` |
+| **Key Insight** | ML detects what **is** happening | AI explains what it **means** |
+
+```
+ML says: "tachycardia (87% confidence)"
+AI says: "Given your cardiac history and current Metoprolol dose, this
+          tachycardia episode may indicate medication non-compliance or
+          dehydration. Recommend Cardiologist visit within 24 hours."
+```
+
+---
+
+## 🔐 Authentication & Roles
+
+| Role | Routes | Capabilities |
+|------|--------|-------------|
+| **Patient** | `/dashboard`, `/family`, `/discovery`, `/emergency` | View vitals, manage profile, input symptoms, request doctor |
+| **Doctor** | `/doctor` | Review cases, respond with notes/prescriptions, mark urgent |
+| **Admin** | `/admin` | View all users, logs, ML/AI outputs, system monitoring |
+
+### Default Credentials
+| Role | Email | Password |
+|------|-------|----------|
+| Patient | `patient@vitalglove.com` | `patient123` |
+| Doctor | `doctor@vitalglove.com` | `doctor123` |
+| Admin | `admin@vitalglove.com` | `admin123` |
+
+---
+
+## 🏗️ What Makes This System UNIQUE
+
+### 1️⃣ Family Hub = Main Brain 🧠
+- Like a **WhatsApp group** for health
+- Everyone contributes: symptoms, observations, reports
+- This provides **real-world context** that sensors alone cannot capture
+
+### 2️⃣ Profile = Structured Medical Input 📋
+- Medications, checkups, documents, prescriptions
+- Makes the system **medically usable**, not just a demo
+
+### 3️⃣ Glove = Real-Time Signal Layer 🧤
+- HR, SpO₂, Temperature, Motion (MPU6050 accelerometer)
+- Adds **continuous physiological monitoring**
+
+### 4️⃣ ML Pipeline = Pattern Detection 🔍
+- Finds hidden issues even if the user didn't explicitly report anything
+- Works on raw sensor features autonomously
+
+### 5️⃣ AI Pipeline = Reasoning Brain 🧠
+- Explains everything in context: medications, history, family health
+- Gives: advice, urgency level, next steps, specialist recommendations
+
+### 6️⃣ Doctor System = Action Layer 👨‍⚕️
+- Receives **complete patient data** (no information loss)
+- Can: diagnose, prescribe, respond remotely
+- Response flows back to patient + family automatically
+
+### 7️⃣ Family = Continuous Monitoring 👨‍👩‍👧
+- Always updated via notifications
+- Can act fast in emergencies
+
+### 8️⃣ Admin = Control + Transparency 🛠️
+- Logs everything
+- Monitors ML + AI outputs
+- Ensures system reliability
+
+---
+
+## ⚡ Quick Start
+
+### Prerequisites
+- **Node.js** 18+ (frontend)
+- **Python** 3.10+ (backend)
+- **MySQL** 8.0+ (database)
+
+### Backend Setup
+```bash
+cd server
+pip install -r requirements.txt
+cp .env.example .env        # Edit with your MySQL password & Groq API key
+python app.py               # Starts on http://localhost:5001
+```
+
+### Frontend Setup
+```bash
+cd vital-monitor-suite
+npm install
+npm run dev                 # Starts on http://localhost:8080
+```
+
+### Database
+- **Auto-created**: The `vitalglove` database and all 15 tables are created automatically on first server start
+- **Auto-seeded**: Demo data (Riya Sharma family, health entries, checkups, ML/AI results) is inserted if empty
+
+---
+
+## 📊 Technology Stack
+
+| Layer | Technology | Purpose |
+|-------|-----------|---------|
+| Frontend | React 18 + TypeScript + Vite | UI framework |
+| UI Library | ShadcnUI + Framer Motion | Components + animations |
+| State | React Context (HealthDataContext) | Centralized DB-synced state |
+| Backend | Flask + Flask-SocketIO | REST API + WebSocket |
+| Database | MySQL 8.0 (connection pooling) | Persistent storage (15 tables) |
+| ML | scikit-learn RandomForest | Pattern classification (95.96% acc) |
+| AI | Groq Cloud (LLaMA3-70B) | Natural language health analysis |
+| Hardware | ESP32 + MAX30102 + MLX90614 + MPU6050 | Wearable sensor glove |
+
+---
+
+## ✅ System Verification Checklist
+
+| Requirement | Status | Evidence |
+|-------------|--------|----------|
+| Dashboard NOT hardcoded | ✅ | All data fetched from MySQL via REST API |
+| Input = Profile + Family + Sensors | ✅ | FamilyHub.tsx + Patient.tsx → API → DB |
+| Full CRUD operations | ✅ | Create/Read/Update/Delete on all health entries |
+| ML and AI are SEPARATE | ✅ | `ml_results` table ≠ `ai_results` table |
+| ML detects, AI explains | ✅ | RF classifies → Groq contextualizes |
+| Doctor flow correct | ✅ | Request → Review → Respond → Notify family |
+| Family notified | ✅ | Notifications table + bell icon UI |
+| Data stored & traceable | ✅ | Every action creates a DB record with timestamp |
+| Zero hardcoded patient data | ✅ | All seed data in `_seed_data()`, loaded via API |
+| TypeScript compiles clean | ✅ | `npx tsc --noEmit` = 0 errors |
